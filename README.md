@@ -94,7 +94,7 @@ Make sure [Docker Desktop](https://www.docker.com/products/docker-desktop/) is r
 
 #### Step 2: Open Terminal in Project Directory
 ```bash
-cd "web_agent"
+cd "Nexagent"
 ```
 
 #### Step 3: Put Your API Key in `.env`
