@@ -6,7 +6,8 @@
 [![Playwright](https://img.shields.io/badge/Automation-Playwright-2EAD33?logo=playwright&logoColor=white)](https://playwright.dev/)
 [![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL_16-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 
-**NexAgent** is an advanced, website-agnostic autonomous web agent platform. Unlike rigid scraping scripts or linear workflow tools (such as Zapier or n8n), NexAgent deploys **Vision-Language Models (VLMs)** combined with **Playwright browser automation** to browse the live web, understand complex interfaces, reason dynamically through multi-step journeys, and execute tasks exactly like a human operator.
+**NexAgent** NexAgent is a website-agnostic autonomous web agent that understands user goals and dynamically navigates websites using LLMs and Playwright.
+It plans, validates, and executes multi-step browser actions while adapting to changing interfaces and unexpected errors.
 
 ---
 
