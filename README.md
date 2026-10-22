@@ -44,9 +44,9 @@ NexAgent uses the **Nebius AI Token Factory** Vision model (`nvidia/Nemotron-3.5
 
 ### 📍 File Location:
 You add your API key in the **root `.env` file** of this project:
-
+Note That When you clone the repo then file will be .env.example then remame the file .env and then add the api key
 ```
-web_agent/
+Nexagent/
 ├── .env           <--- PUT YOUR KEY HERE
 ├── .env.example
 ├── docker-compose.yml
