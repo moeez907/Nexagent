@@ -1,0 +1,131 @@
+services:
+  # ============================================================================
+  # 1. PostgreSQL Database Service
+  # ============================================================================
+  postgres:
+    image: postgres:16-alpine
+    pull_policy: missing
+    container_name: nexagent_postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-web_agent}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-web_agent}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+    networks:
+      - nexagent_network
+
+  # ============================================================================
+  # 2. Redis Cache & Ephemeral State Store
+  # ============================================================================
+  redis:
+    image: redis:7-alpine
+    pull_policy: missing
+    container_name: nexagent_redis
+    ports:
+      - "${REDIS_PORT:-6380}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - nexagent_network
+
+  # ============================================================================
+  # 3. NexAgent FastAPI Backend with Playwright Browser Automation
+  # ============================================================================
+  backend:
+    image: web_agent-backend:latest
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      pull: false
+    container_name: nexagent_backend
+    shm_size: "2gb"
+    environment:
+      APP_ENV: production
+      DEBUG: "false"
+      HOST: "0.0.0.0"
+      PORT: "8000"
+      POSTGRES_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-web_agent}
+      POSTGRES_AUTO_START: "false"
+      REDIS_URL: redis://redis:6379/0
+      REDIS_AUTO_START: "false"
+      USE_REDIS_MEMORY_FALLBACK: "true"
+      BROWSER_HEADLESS: "true"
+      BROWSER_REQUIRE_LOGIN_BEFORE_TASK: "false"
+      LLM_PROVIDER: ${LLM_PROVIDER:-nebius}
+      NEBIUS_API_KEY: ${NEBIUS_API_KEY}
+      NEBIUS_BASE_URL: ${NEBIUS_BASE_URL:-https://api.tokenfactory.us-north1.nebius.com/v1/}
+      NEBIUS_MODEL: ${NEBIUS_MODEL:-nvidia/Nemotron-3.5-Super-VL}
+      PLAYWRIGHT_DOCS_PATH: /playwright/docs
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/app:/app/app
+      - ./backend/main.py:/app/main.py
+      - backend_data:/app/data
+      - backend_sessions:/app/sessions
+      - ./playwright/docs:/playwright/docs:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - nexagent_network
+
+  # ============================================================================
+  # 4. NexAgent React Frontend with Nginx Reverse Proxy
+  # ============================================================================
+  frontend:
+    image: web_agent-frontend:latest
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      pull: false
+    container_name: nexagent_frontend
+    ports:
+      - "${FRONTEND_PORT:-5173}:80"
+    volumes:
+      - ./frontend/dist:/usr/share/nginx/html:ro
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - nexagent_network
+
+# ============================================================================
+# Persistent Named Volumes
+# ============================================================================
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  backend_data:
+    driver: local
+  backend_sessions:
+    driver: local
+
+# ============================================================================
+# Bridge Network for Service Isolation & Internal DNS
+# ============================================================================
+networks:
+  nexagent_network:
+    driver: bridge

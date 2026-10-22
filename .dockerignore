@@ -1,0 +1,20 @@
+# Version control ignore rules
+.git/
+.gitignore
+.env
+.env.*
+!.env.example
+
+# Dependencies & Build artifacts
+node_modules/
+dist/
+venv/
+env/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local data & browser session dumps
+data/
+sessions/
+*.log
