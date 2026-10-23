@@ -58,6 +58,7 @@ jobs:
             # Rebuild and restart Docker containers
             echo "🐳 Building and restarting Docker containers..."
             docker compose down --remove-orphans || true
+            docker rm -f nexagent_postgres nexagent_redis nexagent_backend nexagent_frontend 2>/dev/null || true
             docker compose up -d --build
 
             # Clean unused images to save disk space
