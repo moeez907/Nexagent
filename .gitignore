@@ -2,6 +2,8 @@
 .env
 *.env.local
 backend/.env
+*.pem
+
 
 # Python
 __pycache__/
