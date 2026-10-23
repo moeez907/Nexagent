@@ -57,6 +57,9 @@ class Settings(BaseSettings):
     BROWSER_ELECTRON_CDP: bool = False
     BROWSER_CDP_URL: str = "http://127.0.0.1:9222"
     BROWSER_SLOW_MO_MS: int = 0
+    BROWSER_PROXY_SERVER: Optional[str] = None
+    BROWSER_PROXY_USERNAME: Optional[str] = None
+    BROWSER_PROXY_PASSWORD: Optional[str] = None
     MAX_TASK_STEPS: int = 100
     MAX_ACTION_RETRIES: int = 3
     MAX_SAME_STATE_REPETITIONS: int = 3

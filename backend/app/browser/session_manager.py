@@ -160,7 +160,7 @@ class BrowserSession:
         Types string text into the currently focused element on the live page.
         """
         logger.info(f"User typed text into live canvas: '{text}'")
-        await self.page.keyboard.type(text)
+        await self.page.keyboard.type(text, delay=50)
 
     async def press_key(self, key: str):
         """
@@ -255,14 +255,20 @@ class BrowserSessionManager:
                     "--disable-setuid-sandbox",
                     "--disable-dev-shm-usage",
                     "--disable-blink-features=AutomationControlled",
+                    "--disable-features=IsolateOrigins,site-per-process",
                     "--disable-infobars",
                     "--ignore-certificate-errors",
+                    "--no-first-run",
+                    "--no-service-autorun",
+                    "--password-store=basic",
+                    "--lang=en-US,en",
                 ]
                 try:
                     self._browser = await self._playwright.chromium.launch(
                         headless=settings.BROWSER_HEADLESS,
                         slow_mo=settings.BROWSER_SLOW_MO_MS,
                         args=launch_args,
+                        ignore_default_args=["--enable-automation"],
                     )
                 except Exception as launch_err:
                     err_msg = str(launch_err)
@@ -273,6 +279,7 @@ class BrowserSessionManager:
                             headless=settings.BROWSER_HEADLESS,
                             slow_mo=settings.BROWSER_SLOW_MO_MS,
                             args=launch_args,
+                            ignore_default_args=["--enable-automation"],
                         )
                     except Exception:
                         raise launch_err
@@ -313,6 +320,15 @@ class BrowserSessionManager:
             source_browser = self._browser
             if source_browser is None:
                 raise RuntimeError("A browser instance is not available for an isolated task context.")
+
+            proxy_config = None
+            if settings.BROWSER_PROXY_SERVER:
+                proxy_config = {"server": settings.BROWSER_PROXY_SERVER}
+                if settings.BROWSER_PROXY_USERNAME:
+                    proxy_config["username"] = settings.BROWSER_PROXY_USERNAME
+                if settings.BROWSER_PROXY_PASSWORD:
+                    proxy_config["password"] = settings.BROWSER_PROXY_PASSWORD
+
             context = await source_browser.new_context(
                 viewport={"width": 1280, "height": 800},
                 user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -320,6 +336,7 @@ class BrowserSessionManager:
                 timezone_id="America/New_York",
                 accept_downloads=True,
                 storage_state=storage_state,
+                proxy=proxy_config,
                 extra_http_headers={
                     "Accept-Language": "en-US,en;q=0.9",
                     "Sec-Ch-Ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
@@ -329,28 +346,72 @@ class BrowserSessionManager:
             )
             # Comprehensive anti-bot stealth script (hides Playwright / automation signals)
             await context.add_init_script("""
-                // 1. Hide webdriver flag
+                // 1. Completely hide & delete webdriver flag
+                try {
+                    const newProto = Object.getPrototypeOf(navigator);
+                    delete newProto.webdriver;
+                } catch (e) {}
                 Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
 
-                // 2. Mock chrome runtime
+                // 2. Mock realistic hardware & memory specs
+                Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
+                Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
+                Object.defineProperty(navigator, 'maxTouchPoints', { get: () => 0 });
+
+                // 3. Spoof WebGL vendor and unmasked renderer (avoids SwiftShader / llvmpipe headless detection)
+                try {
+                    const getParameter = WebGLRenderingContext.prototype.getParameter;
+                    WebGLRenderingContext.prototype.getParameter = function(parameter) {
+                        if (parameter === 37445) return 'Intel Inc.';
+                        if (parameter === 37446) return 'Intel(R) Iris(R) Xe Graphics';
+                        return getParameter.apply(this, arguments);
+                    };
+                    if (typeof WebGL2RenderingContext !== 'undefined') {
+                        const getParameter2 = WebGL2RenderingContext.prototype.getParameter;
+                        WebGL2RenderingContext.prototype.getParameter = function(parameter) {
+                            if (parameter === 37445) return 'Intel Inc.';
+                            if (parameter === 37446) return 'Intel(R) Iris(R) Xe Graphics';
+                            return getParameter2.apply(this, arguments);
+                        };
+                    }
+                } catch (e) {}
+
+                // 4. Mock chrome runtime and app objects
                 window.chrome = {
-                    runtime: {},
+                    app: {
+                        isInstalled: false,
+                        InstallState: { DISABLED: 'DISABLED', INSTALLED: 'INSTALLED', NOT_INSTALLED: 'NOT_INSTALLED' },
+                        RunningState: { CANNOT_RUN: 'CANNOT_RUN', READY_TO_RUN: 'READY_TO_RUN', RUNNING: 'RUNNING' }
+                    },
+                    runtime: {
+                        OnInstalledReason: { CHROME_UPDATE: 'chrome_update', INSTALL: 'install', SHARED_MODULE_UPDATE: 'shared_module_update', UPDATE: 'update' },
+                        OnRestartRequiredReason: { APP_UPDATE: 'app_update', OS_UPDATE: 'os_update', PERIODIC: 'periodic' },
+                        PlatformArch: { ARM: 'arm', ARM64: 'arm64', MIPS: 'mips', MIPS64: 'mips64', X86_32: 'x86-32', X86_64: 'x86-64' },
+                        PlatformNaclArch: { ARM: 'arm', MIPS: 'mips', MIPS64: 'mips64', X86_32: 'x86-32', X86_64: 'x86-64' },
+                        PlatformOs: { ANDROID: 'android', CROS: 'cros', LINUX: 'linux', MAC: 'mac', OPENBSD: 'openbsd', WIN: 'win' },
+                        RequestUpdateCheckStatus: { NO_UPDATE: 'no_update', THROTTLED: 'throttled', UPDATE_AVAILABLE: 'update_available' }
+                    },
                     loadTimes: function() {},
-                    csi: function() {},
-                    app: {}
+                    csi: function() {}
                 };
 
-                // 3. Mock languages and realistic plugins
+                // 5. Mock realistic languages and plugins
                 Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
                 Object.defineProperty(navigator, 'plugins', {
-                    get: () => [
-                        { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
-                        { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai', description: '' },
-                        { name: 'Native Client', filename: 'internal-nacl-plugin', description: '' }
-                    ]
+                    get: () => {
+                        const pluginList = [
+                            { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+                            { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai', description: '' },
+                            { name: 'Native Client', filename: 'internal-nacl-plugin', description: '' }
+                        ];
+                        pluginList.item = (i) => pluginList[i];
+                        pluginList.namedItem = (name) => pluginList.find(p => p.name === name);
+                        pluginList.refresh = () => {};
+                        return pluginList;
+                    }
                 });
 
-                // 4. Emulate permissions query
+                // 6. Emulate permissions query
                 const originalQuery = window.navigator.permissions ? window.navigator.permissions.query : null;
                 if (originalQuery) {
                     window.navigator.permissions.query = (parameters) => (
@@ -359,6 +420,15 @@ class BrowserSessionManager:
                             originalQuery(parameters)
                     );
                 }
+
+                // 7. Strip out any automation-specific injected variables
+                try {
+                    for (const prop of Object.getOwnPropertyNames(window)) {
+                        if (prop.startsWith('cdc_') || prop.startsWith('__playwright')) {
+                            delete window[prop];
+                        }
+                    }
+                } catch (e) {}
             """)
             page = await context.new_page()
         owns_context = True

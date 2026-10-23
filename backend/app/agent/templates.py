@@ -40,7 +40,8 @@ class AutomationTemplateRegistry:
                 return (
                     "async def execute(page):\n"
                     f"    search_box = page.locator('[data-agent-ref=\"{safe_ref}\"]').first\n"
-                    f"    await search_box.fill('{safe_query}')\n"
+                    f"    await search_box.click()\n"
+                    f"    await search_box.press_sequentially('{safe_query}', delay=60)\n"
                     "    await search_box.press('Enter')"
                 )
 
