@@ -24,11 +24,26 @@ class CaptchaDetectionSentinel:
         url = browser_state.get("url", "").lower()
 
         # 1. Definite Challenge URLs
-        if "google.com/sorry" in url or "challenges.cloudflare.com" in url or "ebay.com/splashui/challenge" in url:
+        if any(marker in url for marker in [
+            "google.com/sorry",
+            "challenges.cloudflare.com",
+            "ebay.com/splashui/challenge",
+            "daraz.pk/punish",
+            "passport.daraz",
+            "alibaba.com/punish",
+            "aliexpress.com/punish",
+            "/punish?"
+        ]):
             is_detected = True
 
         # 2. Definite Blocking Challenge Titles
-        if "just a moment..." in title or "attention required! | cloudflare" in title or "pardon our interruption" in title:
+        if any(marker in title for marker in [
+            "just a moment...",
+            "attention required! | cloudflare",
+            "pardon our interruption",
+            "security verification",
+            "punish"
+        ]):
             is_detected = True
 
         # 3. Explicit Challenge Text Heuristics (strict blocking phrases)
@@ -38,6 +53,13 @@ class CaptchaDetectionSentinel:
             "select all images with",
             "press & hold to confirm you are human",
             "unusual traffic from your computer network",
+            "unusual traffic",
+            "unusual activity",
+            "drag the slider to verify",
+            "slide to verify",
+            "drag the slider",
+            "drag to verify",
+            "security verification",
             "complete the security check to access",
             "please solve this captcha",
             "confirm you are not a robot",

@@ -346,19 +346,69 @@ class BrowserSessionManager:
             )
             # Comprehensive anti-bot stealth script (hides Playwright / automation signals)
             await context.add_init_script("""
-                // 1. Completely hide & delete webdriver flag
+                // 1. Naturally mask webdriver on Navigator prototype
                 try {
-                    const newProto = Object.getPrototypeOf(navigator);
-                    delete newProto.webdriver;
+                    const proto = Object.getPrototypeOf(navigator);
+                    delete proto.webdriver;
+                    Object.defineProperty(proto, 'webdriver', {
+                        get: () => undefined,
+                        enumerable: false,
+                        configurable: true
+                    });
                 } catch (e) {}
-                Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+                try {
+                    delete navigator.webdriver;
+                } catch (e) {}
 
-                // 2. Mock realistic hardware & memory specs
+                // 2. Realistic window metrics (crucial for Alibaba/Daraz SecGuard which flags outerWidth == 0)
+                try {
+                    Object.defineProperty(window, 'outerWidth', { get: () => window.innerWidth });
+                    Object.defineProperty(window, 'outerHeight', { get: () => window.innerHeight + 85 });
+                } catch (e) {}
+
+                // 3. UserAgentData emulation matching Chrome 124
+                try {
+                    Object.defineProperty(navigator, 'userAgentData', {
+                        get: () => ({
+                            brands: [
+                                { brand: 'Chromium', version: '124' },
+                                { brand: 'Google Chrome', version: '124' },
+                                { brand: 'Not-A.Brand', version: '99' }
+                            ],
+                            mobile: false,
+                            platform: 'Windows',
+                            getHighEntropyValues: async () => ({
+                                architecture: 'x86',
+                                bitness: '64',
+                                model: '',
+                                platform: 'Windows',
+                                platformVersion: '15.0.0',
+                                uaFullVersion: '124.0.0.0'
+                            })
+                        })
+                    });
+                } catch (e) {}
+
+                // 4. Realistic Network Information
+                try {
+                    if (!navigator.connection) {
+                        Object.defineProperty(navigator, 'connection', {
+                            get: () => ({
+                                effectiveType: '4g',
+                                rtt: 50,
+                                downlink: 10,
+                                saveData: false
+                            })
+                        });
+                    }
+                } catch (e) {}
+
+                // 5. Mock realistic hardware & memory specs
                 Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
                 Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
                 Object.defineProperty(navigator, 'maxTouchPoints', { get: () => 0 });
 
-                // 3. Spoof WebGL vendor and unmasked renderer (avoids SwiftShader / llvmpipe headless detection)
+                // 6. Spoof WebGL vendor and unmasked renderer (avoids SwiftShader / llvmpipe headless detection)
                 try {
                     const getParameter = WebGLRenderingContext.prototype.getParameter;
                     WebGLRenderingContext.prototype.getParameter = function(parameter) {
@@ -376,7 +426,7 @@ class BrowserSessionManager:
                     }
                 } catch (e) {}
 
-                // 4. Mock chrome runtime and app objects
+                // 7. Mock chrome runtime and app objects
                 window.chrome = {
                     app: {
                         isInstalled: false,
@@ -395,7 +445,7 @@ class BrowserSessionManager:
                     csi: function() {}
                 };
 
-                // 5. Mock realistic languages and plugins
+                // 8. Mock realistic languages and plugins
                 Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
                 Object.defineProperty(navigator, 'plugins', {
                     get: () => {
@@ -411,7 +461,7 @@ class BrowserSessionManager:
                     }
                 });
 
-                // 6. Emulate permissions query
+                // 9. Emulate permissions query
                 const originalQuery = window.navigator.permissions ? window.navigator.permissions.query : null;
                 if (originalQuery) {
                     window.navigator.permissions.query = (parameters) => (
@@ -421,7 +471,7 @@ class BrowserSessionManager:
                     );
                 }
 
-                // 7. Strip out any automation-specific injected variables
+                // 10. Strip out any automation-specific injected variables
                 try {
                     for (const prop of Object.getOwnPropertyNames(window)) {
                         if (prop.startsWith('cdc_') || prop.startsWith('__playwright')) {
