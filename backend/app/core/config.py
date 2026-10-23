@@ -53,7 +53,7 @@ class Settings(BaseSettings):
     BROWSER_PERSISTENT_PROFILE: bool = True
     BROWSER_PROFILE_DIR: str = "./data/browser_profile"
     BROWSER_DEFAULT_START_URL: str = "https://www.google.com"
-    BROWSER_REQUIRE_LOGIN_BEFORE_TASK: bool = False
+    BROWSER_REQUIRE_LOGIN_BEFORE_TASK: bool = True
     BROWSER_ELECTRON_CDP: bool = False
     BROWSER_CDP_URL: str = "http://127.0.0.1:9222"
     BROWSER_SLOW_MO_MS: int = 0

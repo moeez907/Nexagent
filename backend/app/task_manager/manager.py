@@ -555,6 +555,13 @@ class TaskManager:
                 pass
             await asyncio.sleep(1.0)
 
+        # Immediately persist storage state so Google login is saved permanently for this user account!
+        try:
+            await session.persist_storage_state()
+            logger.info("Successfully persisted Google login state for task %s.", task_id)
+        except Exception as e:
+            logger.warning("Could not persist storage state after Google login: %s", e)
+
         await self._update_task_status(task_id, TaskStatus.RUNNING)
         return True
 
@@ -846,6 +853,20 @@ class TaskManager:
                 owner_key=owner_key,
                 frame_callback=frame_cb,
             )
+
+        # Enforce one-time initial Google Login per user account if requested and not yet seeded
+        if (
+            settings.BROWSER_REQUIRE_LOGIN_BEFORE_TASK
+            and session.seed_path
+            and not os.path.isfile(session.seed_path)
+            and not is_continued_session
+        ):
+            logger.info("First-time session for %s: Requesting one-time Google Account login.", owner_key)
+            try:
+                await session.page.goto("https://accounts.google.com/", wait_until="domcontentloaded", timeout=30000)
+                await self._wait_for_account_login(task_id, session)
+            except Exception as login_err:
+                logger.warning("One-time Google login requirement encountered: %s", login_err)
 
         # Start URL policy:
         # 1. If user provided an explicit URL in goal, navigate to it.

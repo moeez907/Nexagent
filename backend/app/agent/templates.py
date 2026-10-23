@@ -51,7 +51,11 @@ class AutomationTemplateRegistry:
                 safe_ref = ref.replace("'", "\\'")
                 return (
                     "async def execute(page):\n"
-                    f"    await page.locator('[data-agent-ref=\"{safe_ref}\"]').first.click(timeout=15000)"
+                    f"    loc = page.locator('[data-agent-ref=\"{safe_ref}\"]').first\n"
+                    f"    try:\n"
+                    f"        await loc.click(timeout=7000)\n"
+                    f"    except Exception:\n"
+                    f"        await loc.click(timeout=5000, force=True)"
                 )
 
         elif action in {"fill", "fill_form"}:

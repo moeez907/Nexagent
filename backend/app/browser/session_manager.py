@@ -217,9 +217,6 @@ class BrowserSession:
 
     async def navigate_to(self, url: str):
         """Navigates directly to target URL."""
-        target = url.strip()
-        if not target.startswith("http://") and not target.startswith("https://"):
-            target = f"https://{target}"
         await self.page.goto(target, wait_until="domcontentloaded", timeout=30000)
 
     async def close(self):
@@ -318,10 +315,51 @@ class BrowserSessionManager:
                 raise RuntimeError("A browser instance is not available for an isolated task context.")
             context = await source_browser.new_context(
                 viewport={"width": 1280, "height": 800},
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                locale="en-US",
+                timezone_id="America/New_York",
                 accept_downloads=True,
                 storage_state=storage_state,
+                extra_http_headers={
+                    "Accept-Language": "en-US,en;q=0.9",
+                    "Sec-Ch-Ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+                    "Sec-Ch-Ua-Mobile": "?0",
+                    "Sec-Ch-Ua-Platform": '"Windows"',
+                }
             )
+            # Comprehensive anti-bot stealth script (hides Playwright / automation signals)
+            await context.add_init_script("""
+                // 1. Hide webdriver flag
+                Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+
+                // 2. Mock chrome runtime
+                window.chrome = {
+                    runtime: {},
+                    loadTimes: function() {},
+                    csi: function() {},
+                    app: {}
+                };
+
+                // 3. Mock languages and realistic plugins
+                Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+                Object.defineProperty(navigator, 'plugins', {
+                    get: () => [
+                        { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+                        { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai', description: '' },
+                        { name: 'Native Client', filename: 'internal-nacl-plugin', description: '' }
+                    ]
+                });
+
+                // 4. Emulate permissions query
+                const originalQuery = window.navigator.permissions ? window.navigator.permissions.query : null;
+                if (originalQuery) {
+                    window.navigator.permissions.query = (parameters) => (
+                        parameters.name === 'notifications' ?
+                            Promise.resolve({ state: Notification.permission }) :
+                            originalQuery(parameters)
+                    );
+                }
+            """)
             page = await context.new_page()
         owns_context = True
         page.set_default_timeout(settings.ACTION_TIMEOUT_MS)
