@@ -217,7 +217,7 @@ class BrowserSession:
 
     async def navigate_to(self, url: str):
         """Navigates directly to target URL."""
-        await self.page.goto(target, wait_until="domcontentloaded", timeout=30000)
+        await self.page.goto(url, wait_until="domcontentloaded", timeout=30000)
 
     async def close(self):
         try:
