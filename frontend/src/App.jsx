@@ -871,12 +871,6 @@ export default function App() {
                       }}>
                         {displayStatus || 'RUNNING'}
                       </span>
-                      <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 500 }}>
-                        {displayResult?.execution_time_seconds ? `• ${displayResult.execution_time_seconds}s elapsed` : '• 18.4s elapsed'}
-                      </span>
-                      <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 500 }}>
-                        {displayResult?.pages_visited?.length ? `• ${displayResult.pages_visited.length}/${displayResult.pages_visited.length} steps finished` : '• 4/4 steps finished'}
-                      </span>
                     </div>
 
                     {/* Export Buttons */}
