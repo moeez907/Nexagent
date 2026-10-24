@@ -63,7 +63,7 @@ jobs:
             echo "BROWSER_PROXY_SERVER=http://198.23.243.226:6361" >> .env
             echo "BROWSER_PROXY_USERNAME=hvbxqncb" >> .env
             echo "BROWSER_PROXY_PASSWORD=j3gow3eeufva" >> .env
-            echo "BROWSER_REQUIRE_LOGIN_BEFORE_TASK=false" >> .env
+            echo "BROWSER_REQUIRE_LOGIN_BEFORE_TASK=True" >> .env
 
             # Rebuild and restart Docker containers
             echo "🐳 Building and restarting Docker containers..."
