@@ -30,13 +30,54 @@ class BrowserSession:
         self._stream_callback: Optional[Callable[[str], Awaitable[None]]] = None
         self.seed_path = seed_path
 
-    async def persist_storage_state(self):
-        if not self.seed_path:
-            return
-        state = await self.context.storage_state()
-        os.makedirs(os.path.dirname(self.seed_path), exist_ok=True)
-        with open(self.seed_path, "w", encoding="utf-8") as state_file:
-            json.dump(state, state_file)
+    async def persist_storage_state(self, target_path: Optional[str] = None):
+        paths_to_save = set()
+        if target_path:
+            paths_to_save.add(os.path.abspath(target_path))
+        if self.seed_path:
+            paths_to_save.add(os.path.abspath(self.seed_path))
+        default_seed = os.path.abspath(os.path.join(settings.BROWSER_PROFILE_DIR, "default_storage_state.json"))
+        paths_to_save.add(default_seed)
+
+        try:
+            state = await self.context.storage_state()
+            for dest in paths_to_save:
+                os.makedirs(os.path.dirname(dest), exist_ok=True)
+                with open(dest, "w", encoding="utf-8") as state_file:
+                    json.dump(state, state_file, indent=2)
+            logger.info("Persisted browser storage state (cookies/credentials) to: %s", list(paths_to_save))
+        except Exception as error:
+            logger.warning("Could not persist storage state: %s", error)
+
+    async def is_google_signed_in(self) -> bool:
+        """
+        Checks whether the browser session is currently signed into a Google account.
+        Verifies active Google auth cookies and URL signals.
+        """
+        try:
+            cookies = await self.context.cookies([
+                "https://accounts.google.com",
+                "https://google.com",
+                "https://www.google.com",
+            ])
+            auth_cookie_names = {"SID", "HSID", "SSID", "SAPISID", "__Secure-1PSID", "__Secure-3PSID", "LOGIN_INFO"}
+            found = [c for c in cookies if c.get("name") in auth_cookie_names]
+            if found:
+                logger.info("Active Google authentication cookies detected: %s", [c.get("name") for c in found])
+                return True
+        except Exception as e:
+            logger.debug("Error checking context cookies for Google: %s", e)
+
+        try:
+            current_url = (self.page.url or "").lower()
+            if "myaccount.google.com" in current_url and not any(
+                m in current_url for m in ("signin", "servicelogin", "challenge", "verification", "accountchooser")
+            ):
+                return True
+        except Exception:
+            pass
+
+        return False
 
     async def start_live_stream(self, callback: Callable[[str], Awaitable[None]]):
         """Stream the actual browser page through CDP without screenshot polling."""
@@ -219,6 +260,13 @@ class BrowserSession:
         """Navigates directly to target URL."""
         await self.page.goto(url, wait_until="domcontentloaded", timeout=30000)
 
+    @property
+    def current_url(self) -> str:
+        try:
+            return self.page.url if self.page and not self.page.is_closed() else ""
+        except Exception:
+            return ""
+
     async def close(self):
         try:
             await self.stop_live_stream()
@@ -299,6 +347,10 @@ class BrowserSessionManager:
             logger.info("Playwright Chromium browser initialized.")
 
     @staticmethod
+    def get_default_seed_path() -> str:
+        return os.path.abspath(os.path.join(settings.BROWSER_PROFILE_DIR, "default_storage_state.json"))
+
+    @staticmethod
     def _seed_path(owner_key: Optional[str]) -> Optional[str]:
         if not owner_key:
             return None
@@ -322,12 +374,27 @@ class BrowserSessionManager:
         async with self._context_lock:
             storage_state = None
             seed_path = self._seed_path(owner_key)
+            default_seed = self.get_default_seed_path()
+
+            # 1. Try owner-specific seed path first
             if seed_path and os.path.isfile(seed_path):
                 try:
                     with open(seed_path, "r", encoding="utf-8") as state_file:
                         storage_state = json.load(state_file)
+                        logger.info("Loaded user seed state from %s", seed_path)
                 except (OSError, json.JSONDecodeError) as error:
-                    logger.warning("Could not load task seed state: %s", error)
+                    logger.warning("Could not load task seed state from %s: %s", seed_path, error)
+
+            # 2. If no owner seed or failed, fallback to global default persistent seed
+            if not storage_state and os.path.isfile(default_seed):
+                try:
+                    with open(default_seed, "r", encoding="utf-8") as state_file:
+                        storage_state = json.load(state_file)
+                        logger.info("Loaded global persistent seed state from %s", default_seed)
+                except (OSError, json.JSONDecodeError) as error:
+                    logger.warning("Could not load default seed state from %s: %s", default_seed, error)
+
+            active_seed_path = seed_path or default_seed
 
             source_browser = self._browser
             if source_browser is None:
@@ -497,7 +564,7 @@ class BrowserSessionManager:
         page.set_default_timeout(settings.ACTION_TIMEOUT_MS)
         page.set_default_navigation_timeout(settings.PAGE_LOAD_TIMEOUT_MS)
 
-        session = BrowserSession(session_id, base_dir, context, page, owns_context=owns_context, seed_path=seed_path)
+        session = BrowserSession(session_id, base_dir, context, page, owns_context=owns_context, seed_path=active_seed_path)
         if frame_callback:
             await session.start_live_stream(frame_callback)
         self._active_sessions[task_id] = session
@@ -530,12 +597,18 @@ class BrowserSessionManager:
 
         from app.core.database import TaskModel
         target_url = default_url or "https://www.google.com"
+        owner_key = None
         try:
             async with async_session_factory() as db:
                 result = await db.execute(select(TaskModel).where(TaskModel.id == task_id))
                 task = result.scalar_one_or_none()
-                if task and task.current_url and task.current_url not in ("about:blank", ""):
-                    target_url = task.current_url
+                if task:
+                    if task.current_url and task.current_url not in ("about:blank", ""):
+                        target_url = task.current_url
+                    if task.user_id:
+                        owner_key = f"user:{task.user_id}"
+                    elif task.guest_id:
+                        owner_key = f"guest:{task.guest_id}"
         except Exception as e:
             logger.debug("Could not lookup task URL: %s", e)
 
@@ -548,7 +621,7 @@ class BrowserSessionManager:
         )
 
         try:
-            session = await self.create_session(task_id, frame_callback=frame_cb)
+            session = await self.create_session(task_id, owner_key=owner_key, frame_callback=frame_cb)
             if target_url:
                 try:
                     await session.page.goto(target_url, wait_until="domcontentloaded", timeout=20000)

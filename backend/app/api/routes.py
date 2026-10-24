@@ -773,9 +773,13 @@ async def interact_with_live_browser(
         if frame_data:
             await task_manager._broadcast(task_id, "BROWSER_FRAME", {"frame_data": frame_data}, persist=False)
 
+        current_page_url = session.page.url if (session.page and not session.page.is_closed()) else ""
+        if "google.com" in current_page_url.lower() and await session.is_google_signed_in():
+            asyncio.create_task(session.persist_storage_state())
+
         return {
             "status": "success",
-            "url": session.page.url if (session.page and not session.page.is_closed()) else "",
+            "url": current_page_url,
             "frame_data": frame_data
         }
 
