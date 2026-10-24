@@ -262,6 +262,8 @@ class BrowserSessionManager:
                     "--no-service-autorun",
                     "--password-store=basic",
                     "--lang=en-US,en",
+                    "--disable-http2",
+                    "--disable-quic",
                 ]
                 proxy_config = None
                 if settings.BROWSER_PROXY_SERVER:
