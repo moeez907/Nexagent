@@ -263,21 +263,31 @@ class BrowserSessionManager:
                     "--password-store=basic",
                     "--lang=en-US,en",
                 ]
+                proxy_config = None
+                if settings.BROWSER_PROXY_SERVER:
+                    proxy_config = {"server": settings.BROWSER_PROXY_SERVER}
+                    if settings.BROWSER_PROXY_USERNAME:
+                        proxy_config["username"] = settings.BROWSER_PROXY_USERNAME
+                    if settings.BROWSER_PROXY_PASSWORD:
+                        proxy_config["password"] = settings.BROWSER_PROXY_PASSWORD
+
                 try:
                     self._browser = await self._playwright.chromium.launch(
+                        channel="chrome",
                         headless=settings.BROWSER_HEADLESS,
                         slow_mo=settings.BROWSER_SLOW_MO_MS,
+                        proxy=proxy_config,
                         args=launch_args,
                         ignore_default_args=["--enable-automation"],
                     )
                 except Exception as launch_err:
                     err_msg = str(launch_err)
-                    logger.warning("Initial Chromium launch encountered: %s. Attempting fallback launch...", err_msg)
+                    logger.warning("Chrome channel launch encountered: %s. Attempting fallback launch...", err_msg)
                     try:
                         self._browser = await self._playwright.chromium.launch(
-                            channel="chromium",
                             headless=settings.BROWSER_HEADLESS,
                             slow_mo=settings.BROWSER_SLOW_MO_MS,
+                            proxy=proxy_config,
                             args=launch_args,
                             ignore_default_args=["--enable-automation"],
                         )
