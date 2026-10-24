@@ -526,15 +526,28 @@ class TaskManager:
         ) or "myaccount.google.com/verification" in normalized_url
 
     async def _wait_for_account_login(self, task_id: str, session) -> bool:
-        """Give the user a visible browser window for manual account login."""
+        """Give the user an interactive live browser window for manual account login."""
         await self._update_task_status(task_id, TaskStatus.WAITING_FOR_HUMAN)
-        prompt = "Please sign in to your account in the browser window, then click Continue here."
+        prompt = "Please sign in to your Google Account in the live browser preview below. Once signed in, click Continue to proceed with your task."
         await self._create_intervention(
             task_id=task_id,
             intervention_type=HumanInterventionType.ACCOUNT_LOGIN_REQUIRED,
             prompt=prompt,
             action_payload={"url": session.page.url}
         )
+
+        # Capture screenshot of Google login page so it immediately shows in the Live Browser preview
+        try:
+            screenshot_path = await session.capture_screenshot("google_login.png")
+            await self._broadcast(task_id, "BROWSER_OBSERVED", {
+                "step": 0,
+                "url": session.page.url,
+                "title": await session.page.title(),
+                "screenshot_path": screenshot_path,
+            })
+        except Exception as err:
+            logger.debug("Screenshot error during login wait: %s", err)
+
         await self._broadcast(task_id, "ACCOUNT_LOGIN_REQUIRED", {
             "prompt": prompt,
             "url": session.page.url
@@ -543,22 +556,19 @@ class TaskManager:
         if resolution.get("status") != HumanInterventionStatus.APPROVED.value:
             return False
 
-        # The approval is only permission to continue; wait until Google has
-        # actually left its authentication flow before observing the page.
-        deadline = asyncio.get_running_loop().time() + 300.0
-        while self._is_google_authentication_page(session.page.url):
-            if asyncio.get_running_loop().time() >= deadline:
-                logger.warning("Google login was not detected after approval for task %s.", task_id)
-                return False
-            try:
-                await session.page.wait_for_load_state("domcontentloaded", timeout=5000)
-            except Exception:
-                pass
-            await asyncio.sleep(1.0)
+        # Wait briefly for page to settle after user clicks Continue
+        try:
+            await session.page.wait_for_load_state("domcontentloaded", timeout=10000)
+            await asyncio.sleep(2.0)
+        except Exception:
+            pass
 
-        # Immediately persist storage state so Google login is saved permanently for this user account!
+        # Save cookies & storage state so Google login is remembered for all tasks!
         try:
             await session.persist_storage_state()
+            default_seed = session_manager.get_default_seed_path()
+            if session.seed_path != default_seed:
+                await session.persist_storage_state(default_seed)
             logger.info("Successfully persisted Google login state for task %s.", task_id)
         except Exception as e:
             logger.warning("Could not persist storage state after Google login: %s", e)

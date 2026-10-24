@@ -310,6 +310,9 @@ export default function App() {
         }
       ]);
     } else if (event_type === 'CAPTCHA_DETECTED' || event_type === 'ACCOUNT_LOGIN_REQUIRED') {
+      if (data.url) {
+        setCurrentUrl(data.url);
+      }
       setPendingIntervention({
         intervention_type: event_type === 'CAPTCHA_DETECTED' ? 'CAPTCHA' : 'ACCOUNT_LOGIN_REQUIRED',
         prompt: data.prompt || data.message || 'Please complete account login in the browser, then continue.'
