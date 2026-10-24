@@ -182,8 +182,6 @@ async def task_websocket_endpoint(websocket: WebSocket, task_id: str):
                                     "event_type": "BROWSER_FRAME",
                                     "data": {"frame_data": frame_data, "url": curr_url}
                                 })
-                            if "google.com" in (curr_url or "").lower() and await session.is_google_signed_in():
-                                asyncio.create_task(session.persist_storage_state())
             except Exception as e:
                 logger.debug(f"WS interaction dispatch error: {e}")
     except WebSocketDisconnect:

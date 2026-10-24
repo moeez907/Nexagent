@@ -566,6 +566,9 @@ class TaskManager:
         # Save cookies & storage state so Google login is remembered for all tasks!
         try:
             await session.persist_storage_state()
+            default_seed = session_manager.get_default_seed_path()
+            if session.seed_path != default_seed:
+                await session.persist_storage_state(default_seed)
             logger.info("Successfully persisted Google login state for task %s.", task_id)
         except Exception as e:
             logger.warning("Could not persist storage state after Google login: %s", e)
@@ -862,29 +865,19 @@ class TaskManager:
                 frame_callback=frame_cb,
             )
 
-        # Enforce one-time initial Google Login per user account if requested and not yet signed in
-        if settings.BROWSER_REQUIRE_LOGIN_BEFORE_TASK and not is_continued_session:
-            logger.info("Checking Google Account status for task %s...", task_id)
-            is_signed_in = await session.is_google_signed_in()
-            if is_signed_in:
-                logger.info("Google Account is already signed in for task %s. Skipping login prompt.", task_id)
-            else:
-                logger.info("No active Google session detected. Navigating to Google accounts to verify/login...")
-                try:
-                    await session.page.goto("https://accounts.google.com/", wait_until="domcontentloaded", timeout=30000)
-                    await asyncio.sleep(1.0)
-
-                    curr_url = (session.page.url or "").lower()
-                    if ("myaccount.google.com" in curr_url and not any(m in curr_url for m in ("signin", "servicelogin", "challenge", "verification", "accountchooser"))) or await session.is_google_signed_in():
-                        logger.info("User is already signed in to Google. Persisting state and continuing.")
-                        await session.persist_storage_state()
-                    else:
-                        logger.info("Prompting user to sign in to Google in live browser.")
-                        login_resolved = await self._wait_for_account_login(task_id, session)
-                        if not login_resolved:
-                            logger.warning("User cancelled or did not complete Google sign-in.")
-                except Exception as login_err:
-                    logger.warning("Google account verification encountered: %s", login_err)
+        # Enforce one-time initial Google Login per user account if requested and not yet seeded
+        if (
+            settings.BROWSER_REQUIRE_LOGIN_BEFORE_TASK
+            and session.seed_path
+            and not os.path.isfile(session.seed_path)
+            and not is_continued_session
+        ):
+            logger.info("First-time session for %s: Requesting one-time Google Account login.", owner_key)
+            try:
+                await session.page.goto("https://accounts.google.com/", wait_until="domcontentloaded", timeout=30000)
+                await self._wait_for_account_login(task_id, session)
+            except Exception as login_err:
+                logger.warning("One-time Google login requirement encountered: %s", login_err)
 
         # Start URL policy:
         # 1. If user provided an explicit URL in goal, navigate to it.

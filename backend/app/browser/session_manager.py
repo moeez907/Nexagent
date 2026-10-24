@@ -30,54 +30,13 @@ class BrowserSession:
         self._stream_callback: Optional[Callable[[str], Awaitable[None]]] = None
         self.seed_path = seed_path
 
-    async def persist_storage_state(self, target_path: Optional[str] = None):
-        paths_to_save = set()
-        if target_path:
-            paths_to_save.add(os.path.abspath(target_path))
-        if self.seed_path:
-            paths_to_save.add(os.path.abspath(self.seed_path))
-        default_seed = os.path.abspath(os.path.join(settings.BROWSER_PROFILE_DIR, "default_storage_state.json"))
-        paths_to_save.add(default_seed)
-
-        try:
-            state = await self.context.storage_state()
-            for dest in paths_to_save:
-                os.makedirs(os.path.dirname(dest), exist_ok=True)
-                with open(dest, "w", encoding="utf-8") as state_file:
-                    json.dump(state, state_file, indent=2)
-            logger.info("Persisted browser storage state (cookies/credentials) to: %s", list(paths_to_save))
-        except Exception as error:
-            logger.warning("Could not persist storage state: %s", error)
-
-    async def is_google_signed_in(self) -> bool:
-        """
-        Checks whether the browser session is currently signed into a Google account.
-        Verifies active Google auth cookies and URL signals.
-        """
-        try:
-            cookies = await self.context.cookies([
-                "https://accounts.google.com",
-                "https://google.com",
-                "https://www.google.com",
-            ])
-            auth_cookie_names = {"SID", "HSID", "SSID", "SAPISID", "__Secure-1PSID", "__Secure-3PSID", "LOGIN_INFO"}
-            found = [c for c in cookies if c.get("name") in auth_cookie_names]
-            if found:
-                logger.info("Active Google authentication cookies detected: %s", [c.get("name") for c in found])
-                return True
-        except Exception as e:
-            logger.debug("Error checking context cookies for Google: %s", e)
-
-        try:
-            current_url = (self.page.url or "").lower()
-            if "myaccount.google.com" in current_url and not any(
-                m in current_url for m in ("signin", "servicelogin", "challenge", "verification", "accountchooser")
-            ):
-                return True
-        except Exception:
-            pass
-
-        return False
+    async def persist_storage_state(self):
+        if not self.seed_path:
+            return
+        state = await self.context.storage_state()
+        os.makedirs(os.path.dirname(self.seed_path), exist_ok=True)
+        with open(self.seed_path, "w", encoding="utf-8") as state_file:
+            json.dump(state, state_file)
 
     async def start_live_stream(self, callback: Callable[[str], Awaitable[None]]):
         """Stream the actual browser page through CDP without screenshot polling."""
@@ -260,13 +219,6 @@ class BrowserSession:
         """Navigates directly to target URL."""
         await self.page.goto(url, wait_until="domcontentloaded", timeout=30000)
 
-    @property
-    def current_url(self) -> str:
-        try:
-            return self.page.url if self.page and not self.page.is_closed() else ""
-        except Exception:
-            return ""
-
     async def close(self):
         try:
             await self.stop_live_stream()
@@ -303,11 +255,15 @@ class BrowserSessionManager:
                     "--disable-setuid-sandbox",
                     "--disable-dev-shm-usage",
                     "--disable-blink-features=AutomationControlled",
+                    "--disable-features=IsolateOrigins,site-per-process",
                     "--disable-infobars",
+                    "--ignore-certificate-errors",
                     "--no-first-run",
                     "--no-service-autorun",
                     "--password-store=basic",
                     "--lang=en-US,en",
+                    "--disable-http2",
+                    "--disable-quic",
                 ]
                 proxy_config = None
                 if settings.BROWSER_PROXY_SERVER:
@@ -343,10 +299,6 @@ class BrowserSessionManager:
             logger.info("Playwright Chromium browser initialized.")
 
     @staticmethod
-    def get_default_seed_path() -> str:
-        return os.path.abspath(os.path.join(settings.BROWSER_PROFILE_DIR, "default_storage_state.json"))
-
-    @staticmethod
     def _seed_path(owner_key: Optional[str]) -> Optional[str]:
         if not owner_key:
             return None
@@ -370,27 +322,12 @@ class BrowserSessionManager:
         async with self._context_lock:
             storage_state = None
             seed_path = self._seed_path(owner_key)
-            default_seed = self.get_default_seed_path()
-
-            # 1. Try owner-specific seed path first
             if seed_path and os.path.isfile(seed_path):
                 try:
                     with open(seed_path, "r", encoding="utf-8") as state_file:
                         storage_state = json.load(state_file)
-                        logger.info("Loaded user seed state from %s", seed_path)
                 except (OSError, json.JSONDecodeError) as error:
-                    logger.warning("Could not load task seed state from %s: %s", seed_path, error)
-
-            # 2. If no owner seed or failed, fallback to global default persistent seed
-            if not storage_state and os.path.isfile(default_seed):
-                try:
-                    with open(default_seed, "r", encoding="utf-8") as state_file:
-                        storage_state = json.load(state_file)
-                        logger.info("Loaded global persistent seed state from %s", default_seed)
-                except (OSError, json.JSONDecodeError) as error:
-                    logger.warning("Could not load default seed state from %s: %s", default_seed, error)
-
-            active_seed_path = seed_path or default_seed
+                    logger.warning("Could not load task seed state: %s", error)
 
             source_browser = self._browser
             if source_browser is None:
@@ -406,22 +343,148 @@ class BrowserSessionManager:
 
             context = await source_browser.new_context(
                 viewport={"width": 1280, "height": 800},
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
                 locale="en-US",
                 timezone_id="America/New_York",
                 accept_downloads=True,
                 storage_state=storage_state,
                 proxy=proxy_config,
+                extra_http_headers={
+                    "Accept-Language": "en-US,en;q=0.9",
+                    "Sec-Ch-Ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+                    "Sec-Ch-Ua-Mobile": "?0",
+                    "Sec-Ch-Ua-Platform": '"Windows"',
+                }
             )
-            # Safe anti-detection script that preserves native Chrome bindings and avoids Google bot triggers
+            # Comprehensive anti-bot stealth script (hides Playwright / automation signals)
             await context.add_init_script("""
+                // 1. Naturally mask webdriver on Navigator prototype
                 try {
-                    // Realistic window metrics
+                    const proto = Object.getPrototypeOf(navigator);
+                    delete proto.webdriver;
+                    Object.defineProperty(proto, 'webdriver', {
+                        get: () => undefined,
+                        enumerable: false,
+                        configurable: true
+                    });
+                } catch (e) {}
+                try {
+                    delete navigator.webdriver;
+                } catch (e) {}
+
+                // 2. Realistic window metrics (crucial for Alibaba/Daraz SecGuard which flags outerWidth == 0)
+                try {
                     Object.defineProperty(window, 'outerWidth', { get: () => window.innerWidth });
                     Object.defineProperty(window, 'outerHeight', { get: () => window.innerHeight + 85 });
                 } catch (e) {}
 
+                // 3. UserAgentData emulation matching Chrome 124
                 try {
-                    // Strip out any automation-specific injected variables
+                    Object.defineProperty(navigator, 'userAgentData', {
+                        get: () => ({
+                            brands: [
+                                { brand: 'Chromium', version: '124' },
+                                { brand: 'Google Chrome', version: '124' },
+                                { brand: 'Not-A.Brand', version: '99' }
+                            ],
+                            mobile: false,
+                            platform: 'Windows',
+                            getHighEntropyValues: async () => ({
+                                architecture: 'x86',
+                                bitness: '64',
+                                model: '',
+                                platform: 'Windows',
+                                platformVersion: '15.0.0',
+                                uaFullVersion: '124.0.0.0'
+                            })
+                        })
+                    });
+                } catch (e) {}
+
+                // 4. Realistic Network Information
+                try {
+                    if (!navigator.connection) {
+                        Object.defineProperty(navigator, 'connection', {
+                            get: () => ({
+                                effectiveType: '4g',
+                                rtt: 50,
+                                downlink: 10,
+                                saveData: false
+                            })
+                        });
+                    }
+                } catch (e) {}
+
+                // 5. Mock realistic hardware & memory specs
+                Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
+                Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
+                Object.defineProperty(navigator, 'maxTouchPoints', { get: () => 0 });
+
+                // 6. Spoof WebGL vendor and unmasked renderer (avoids SwiftShader / llvmpipe headless detection)
+                try {
+                    const getParameter = WebGLRenderingContext.prototype.getParameter;
+                    WebGLRenderingContext.prototype.getParameter = function(parameter) {
+                        if (parameter === 37445) return 'Intel Inc.';
+                        if (parameter === 37446) return 'Intel(R) Iris(R) Xe Graphics';
+                        return getParameter.apply(this, arguments);
+                    };
+                    if (typeof WebGL2RenderingContext !== 'undefined') {
+                        const getParameter2 = WebGL2RenderingContext.prototype.getParameter;
+                        WebGL2RenderingContext.prototype.getParameter = function(parameter) {
+                            if (parameter === 37445) return 'Intel Inc.';
+                            if (parameter === 37446) return 'Intel(R) Iris(R) Xe Graphics';
+                            return getParameter2.apply(this, arguments);
+                        };
+                    }
+                } catch (e) {}
+
+                // 7. Mock chrome runtime and app objects
+                window.chrome = {
+                    app: {
+                        isInstalled: false,
+                        InstallState: { DISABLED: 'DISABLED', INSTALLED: 'INSTALLED', NOT_INSTALLED: 'NOT_INSTALLED' },
+                        RunningState: { CANNOT_RUN: 'CANNOT_RUN', READY_TO_RUN: 'READY_TO_RUN', RUNNING: 'RUNNING' }
+                    },
+                    runtime: {
+                        OnInstalledReason: { CHROME_UPDATE: 'chrome_update', INSTALL: 'install', SHARED_MODULE_UPDATE: 'shared_module_update', UPDATE: 'update' },
+                        OnRestartRequiredReason: { APP_UPDATE: 'app_update', OS_UPDATE: 'os_update', PERIODIC: 'periodic' },
+                        PlatformArch: { ARM: 'arm', ARM64: 'arm64', MIPS: 'mips', MIPS64: 'mips64', X86_32: 'x86-32', X86_64: 'x86-64' },
+                        PlatformNaclArch: { ARM: 'arm', MIPS: 'mips', MIPS64: 'mips64', X86_32: 'x86-32', X86_64: 'x86-64' },
+                        PlatformOs: { ANDROID: 'android', CROS: 'cros', LINUX: 'linux', MAC: 'mac', OPENBSD: 'openbsd', WIN: 'win' },
+                        RequestUpdateCheckStatus: { NO_UPDATE: 'no_update', THROTTLED: 'throttled', UPDATE_AVAILABLE: 'update_available' }
+                    },
+                    loadTimes: function() {},
+                    csi: function() {}
+                };
+
+                // 8. Mock realistic languages and plugins
+                Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+                Object.defineProperty(navigator, 'plugins', {
+                    get: () => {
+                        const pluginList = [
+                            { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+                            { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai', description: '' },
+                            { name: 'Native Client', filename: 'internal-nacl-plugin', description: '' }
+                        ];
+                        pluginList.item = (i) => pluginList[i];
+                        pluginList.namedItem = (name) => pluginList.find(p => p.name === name);
+                        pluginList.refresh = () => {};
+                        return pluginList;
+                    }
+                });
+
+                // 9. Emulate permissions query
+                const originalQuery = window.navigator.permissions ? window.navigator.permissions.query : null;
+                if (originalQuery) {
+                    window.navigator.permissions.query = (parameters) => (
+                        parameters.name === 'notifications' ?
+                            Promise.resolve({ state: Notification.permission }) :
+                            originalQuery(parameters)
+                    );
+                }
+
+                // 10. Strip out any automation-specific injected variables
+                try {
                     for (const prop of Object.getOwnPropertyNames(window)) {
                         if (prop.startsWith('cdc_') || prop.startsWith('__playwright')) {
                             delete window[prop];
@@ -434,7 +497,7 @@ class BrowserSessionManager:
         page.set_default_timeout(settings.ACTION_TIMEOUT_MS)
         page.set_default_navigation_timeout(settings.PAGE_LOAD_TIMEOUT_MS)
 
-        session = BrowserSession(session_id, base_dir, context, page, owns_context=owns_context, seed_path=active_seed_path)
+        session = BrowserSession(session_id, base_dir, context, page, owns_context=owns_context, seed_path=seed_path)
         if frame_callback:
             await session.start_live_stream(frame_callback)
         self._active_sessions[task_id] = session
@@ -467,18 +530,12 @@ class BrowserSessionManager:
 
         from app.core.database import TaskModel
         target_url = default_url or "https://www.google.com"
-        owner_key = None
         try:
             async with async_session_factory() as db:
                 result = await db.execute(select(TaskModel).where(TaskModel.id == task_id))
                 task = result.scalar_one_or_none()
-                if task:
-                    if task.current_url and task.current_url not in ("about:blank", ""):
-                        target_url = task.current_url
-                    if task.user_id:
-                        owner_key = f"user:{task.user_id}"
-                    elif task.guest_id:
-                        owner_key = f"guest:{task.guest_id}"
+                if task and task.current_url and task.current_url not in ("about:blank", ""):
+                    target_url = task.current_url
         except Exception as e:
             logger.debug("Could not lookup task URL: %s", e)
 
@@ -491,7 +548,7 @@ class BrowserSessionManager:
         )
 
         try:
-            session = await self.create_session(task_id, owner_key=owner_key, frame_callback=frame_cb)
+            session = await self.create_session(task_id, frame_callback=frame_cb)
             if target_url:
                 try:
                     await session.page.goto(target_url, wait_until="domcontentloaded", timeout=20000)
