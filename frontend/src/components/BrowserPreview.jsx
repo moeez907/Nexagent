@@ -17,7 +17,6 @@ export default function BrowserPreview({
   const [isSending, setIsSending] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [displayedSrc, setDisplayedSrc] = useState(screenshotUrl || null);
-  const [viewMode, setViewMode] = useState('vnc');
 
   const containerRef = useRef(null);
   const imageRef = useRef(null);
@@ -444,56 +443,6 @@ export default function BrowserPreview({
           <span>{statusBadge.text}</span>
         </div>
 
-        {/* View Mode Toggle: Real Desktop Chrome (noVNC) vs Fast Stream */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          backgroundColor: '#f1f5f9',
-          borderRadius: '8px',
-          padding: '2px',
-          border: '1px solid #e2e8f0',
-          gap: '2px'
-        }}>
-          <button
-            type="button"
-            onClick={() => setViewMode('vnc')}
-            style={{
-              padding: '3px 8px',
-              borderRadius: '6px',
-              fontSize: '0.72rem',
-              fontWeight: 600,
-              border: 'none',
-              cursor: 'pointer',
-              backgroundColor: viewMode === 'vnc' ? '#ffffff' : 'transparent',
-              color: viewMode === 'vnc' ? '#2563eb' : '#64748b',
-              boxShadow: viewMode === 'vnc' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
-              transition: 'all 0.15s ease'
-            }}
-            title="Real Embedded Google Chrome Session with Native UI, Hardware Input, and Context Menus"
-          >
-            🖥️ Native Chrome
-          </button>
-          <button
-            type="button"
-            onClick={() => setViewMode('stream')}
-            style={{
-              padding: '3px 8px',
-              borderRadius: '6px',
-              fontSize: '0.72rem',
-              fontWeight: 600,
-              border: 'none',
-              cursor: 'pointer',
-              backgroundColor: viewMode === 'stream' ? '#ffffff' : 'transparent',
-              color: viewMode === 'stream' ? '#2563eb' : '#64748b',
-              boxShadow: viewMode === 'stream' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
-              transition: 'all 0.15s ease'
-            }}
-            title="Fast Lightweight Compositor Stream"
-          >
-            ⚡ Stream
-          </button>
-        </div>
-
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#5f6368' }}>
           <ShieldCheck size={16} color="#0f9d58" title="Playwright Guard Active" />
         </div>
@@ -527,22 +476,6 @@ export default function BrowserPreview({
             onDidNavigate={(event) => setNavUrl(event.url)}
             onDidNavigateInPage={(event) => setNavUrl(event.url)}
           />
-        ) : viewMode === 'vnc' ? (
-          <div style={{ width: '100%', height: '100%', minHeight: '520px', position: 'relative' }}>
-            <iframe
-              src="/vnc/vnc_lite.html?autoconnect=true&resize=scale&reconnect=true&path=websockify"
-              title="Real Google Chrome Embedded Desktop Session"
-              allow="clipboard-read; clipboard-write"
-              style={{
-                width: '100%',
-                height: '100%',
-                minHeight: '520px',
-                border: 'none',
-                display: 'block',
-                backgroundColor: '#0f172a'
-              }}
-            />
-          </div>
         ) : displayedSrc ? (
           <>
             <img

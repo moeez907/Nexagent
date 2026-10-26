@@ -61,10 +61,6 @@ jobs:
             sed -i '/^BROWSER_PROXY_PASSWORD=/d' .env
             sed -i '/^BROWSER_REQUIRE_LOGIN_BEFORE_TASK=/d' .env
             echo "BROWSER_REQUIRE_LOGIN_BEFORE_TASK=True" >> .env
-            sed -i '/^BROWSER_HEADLESS=/d' .env
-            echo "BROWSER_HEADLESS=false" >> .env
-            sed -i '/^DISPLAY=/d' .env
-            echo "DISPLAY=:99" >> .env
 
             # Rebuild and restart Docker containers
             echo "🐳 Building and restarting Docker containers..."

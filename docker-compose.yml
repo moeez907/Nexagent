@@ -66,8 +66,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       REDIS_AUTO_START: "false"
       USE_REDIS_MEMORY_FALLBACK: "true"
-      BROWSER_HEADLESS: "${BROWSER_HEADLESS:-false}"
-      DISPLAY: "${DISPLAY:-:99}"
+      BROWSER_HEADLESS: "true"
       BROWSER_REQUIRE_LOGIN_BEFORE_TASK: "${BROWSER_REQUIRE_LOGIN_BEFORE_TASK:-true}"
       BROWSER_PROXY_SERVER: "${BROWSER_PROXY_SERVER:-}"
       BROWSER_PROXY_USERNAME: "${BROWSER_PROXY_USERNAME:-}"
@@ -79,7 +78,6 @@ services:
       PLAYWRIGHT_DOCS_PATH: /playwright/docs
     ports:
       - "8000:8000"
-      - "6080:6080"
     volumes:
       - ./backend/app:/app/app
       - ./backend/main.py:/app/main.py
