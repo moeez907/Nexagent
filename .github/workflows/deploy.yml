@@ -55,14 +55,11 @@ jobs:
               echo "FRONTEND_PORT=80" >> .env
             fi
 
-            # Configure Webshare Proxy & Settings
+            # Configure Browser Settings
             sed -i '/^BROWSER_PROXY_SERVER=/d' .env
             sed -i '/^BROWSER_PROXY_USERNAME=/d' .env
             sed -i '/^BROWSER_PROXY_PASSWORD=/d' .env
             sed -i '/^BROWSER_REQUIRE_LOGIN_BEFORE_TASK=/d' .env
-            echo "BROWSER_PROXY_SERVER=http://198.23.243.226:6361" >> .env
-            echo "BROWSER_PROXY_USERNAME=hvbxqncb" >> .env
-            echo "BROWSER_PROXY_PASSWORD=j3gow3eeufva" >> .env
             echo "BROWSER_REQUIRE_LOGIN_BEFORE_TASK=True" >> .env
 
             # Rebuild and restart Docker containers

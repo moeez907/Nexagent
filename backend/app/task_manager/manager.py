@@ -956,7 +956,16 @@ class TaskManager:
                             frame_callback=frame_cb,
                         )
 
-            await asyncio.sleep(0.5)
+            # Dismiss Google consent dialog if shown (common on EU / AWS servers)
+            try:
+                consent_btn = session.page.locator(
+                    'button:has-text("Accept all"), button:has-text("I agree"), button:has-text("Reject all"), div[role="dialog"] button:has-text("Accept")'
+                ).first
+                if await consent_btn.count() > 0 and await consent_btn.is_visible():
+                    await consent_btn.click()
+                    await asyncio.sleep(0.3)
+            except Exception:
+                pass
 
             # Update DB current_url so REST API and frontend immediately reflect Google
             await self._update_task_status(task_id, TaskStatus.PLANNING, current_url=session.page.url)
