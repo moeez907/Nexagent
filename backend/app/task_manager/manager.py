@@ -965,11 +965,22 @@ class TaskManager:
         # 1. Initialize and open Google in the browser if starting fresh
         if not is_continued_session or session.page.url in ("about:blank", ""):
             logger.info("Opening Google (https://www.google.com) for task %s", task_id)
-            try:
-                await session.page.goto("https://www.google.com", wait_until="domcontentloaded", timeout=25000)
-                await asyncio.sleep(0.5)
-            except Exception as nav_err:
-                logger.warning("Error navigating to Google: %s", nav_err)
+            for attempt in range(2):
+                try:
+                    await session.page.goto("https://www.google.com", wait_until="domcontentloaded", timeout=12000)
+                    if session.page.url not in ("about:blank", ""):
+                        break
+                except Exception as nav_err:
+                    logger.warning("Error navigating to Google (attempt %s): %s", attempt + 1, nav_err)
+                    if attempt == 0 and getattr(session, "has_proxy", False):
+                        logger.info("Proxy connection failed on Google. Retrying with direct connection for task %s...", task_id)
+                        session = await session_manager.fallback_session_to_direct(
+                            task_id,
+                            owner_key=owner_key,
+                            frame_callback=frame_cb,
+                        )
+
+            await asyncio.sleep(0.5)
 
             # Update DB current_url so REST API and frontend immediately reflect Google
             await self._update_task_status(task_id, TaskStatus.PLANNING, current_url=session.page.url)
@@ -999,9 +1010,17 @@ class TaskManager:
                     logger.info("Google Account is NOT logged in for task %s. User must log in before proceeding.", task_id)
                     try:
                         if not self._is_google_authentication_page(session.page.url):
-                            await session.page.goto("https://accounts.google.com/", wait_until="domcontentloaded", timeout=20000)
+                            await session.page.goto("https://accounts.google.com/", wait_until="domcontentloaded", timeout=15000)
                     except Exception as nav_err:
                         logger.warning("Error opening Google Sign In: %s", nav_err)
+                        if getattr(session, "has_proxy", False):
+                            logger.info("Proxy failed on Google Sign In. Retrying direct for task %s...", task_id)
+                            session = await session_manager.fallback_session_to_direct(
+                                task_id,
+                                owner_key=owner_key,
+                                frame_callback=frame_cb,
+                            )
+                            await session.page.goto("https://accounts.google.com/", wait_until="domcontentloaded", timeout=15000)
 
                     login_ok = await self._wait_for_account_login(task_id, session)
                     if not login_ok:

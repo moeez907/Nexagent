@@ -19,7 +19,7 @@ logger = logging.getLogger("web_agent.browser.session_manager")
 
 
 class BrowserSession:
-    def __init__(self, session_id: str, session_dir: str, context: BrowserContext, page: Page, owns_context: bool = True, seed_path: Optional[str] = None):
+    def __init__(self, session_id: str, session_dir: str, context: BrowserContext, page: Page, owns_context: bool = True, seed_path: Optional[str] = None, has_proxy: bool = False):
         self.session_id = session_id
         self.session_dir = session_dir
         self.context = context
@@ -29,6 +29,7 @@ class BrowserSession:
         self._cdp_session = None
         self._stream_callback: Optional[Callable[[str], Awaitable[None]]] = None
         self.seed_path = seed_path
+        self.has_proxy = has_proxy
 
     async def persist_storage_state(self, path: Optional[str] = None):
         target_path = path or self.seed_path
@@ -284,7 +285,6 @@ class BrowserSessionManager:
                     channel="chrome",
                     headless=settings.BROWSER_HEADLESS,
                     slow_mo=settings.BROWSER_SLOW_MO_MS,
-                    proxy=proxy_config,
                     args=launch_args,
                     ignore_default_args=["--enable-automation"],
                 )
@@ -297,7 +297,6 @@ class BrowserSessionManager:
                 self._browser = await self._playwright.chromium.launch(
                     headless=settings.BROWSER_HEADLESS,
                     slow_mo=settings.BROWSER_SLOW_MO_MS,
-                    proxy=proxy_config,
                     args=launch_args,
                     ignore_default_args=["--enable-automation"],
                 )
@@ -320,6 +319,7 @@ class BrowserSessionManager:
         task_id: str,
         owner_key: Optional[str] = None,
         frame_callback: Optional[Callable[[str], Awaitable[None]]] = None,
+        use_proxy: bool = True,
     ) -> BrowserSession:
         await self.initialize()
 
@@ -351,7 +351,7 @@ class BrowserSessionManager:
                 raise RuntimeError("A browser instance is not available for an isolated task context.")
 
             proxy_config = None
-            if settings.BROWSER_PROXY_SERVER:
+            if use_proxy and settings.BROWSER_PROXY_SERVER:
                 proxy_config = {"server": settings.BROWSER_PROXY_SERVER}
                 if settings.BROWSER_PROXY_USERNAME:
                     proxy_config["username"] = settings.BROWSER_PROXY_USERNAME
@@ -386,21 +386,47 @@ class BrowserSessionManager:
         page.set_default_timeout(settings.ACTION_TIMEOUT_MS)
         page.set_default_navigation_timeout(settings.PAGE_LOAD_TIMEOUT_MS)
 
-        session = BrowserSession(session_id, base_dir, context, page, owns_context=owns_context, seed_path=seed_path)
+        session = BrowserSession(
+            session_id, base_dir, context, page, owns_context=owns_context, seed_path=seed_path, has_proxy=bool(proxy_config)
+        )
         if frame_callback:
             await session.start_live_stream(frame_callback)
         self._active_sessions[task_id] = session
-        async with async_session_factory() as db:
-            result = await db.execute(select(BrowserSessionModel).where(BrowserSessionModel.task_id == task_id))
-            db_session = result.scalar_one_or_none()
-            if db_session:
-                db_session.session_dir = base_dir
-                db_session.is_active = True
-            else:
-                db.add(BrowserSessionModel(task_id=task_id, session_dir=base_dir, is_active=True))
-            await db.commit()
-        logger.info(f"Created browser session {session_id} for task {task_id}.")
+        try:
+            async with async_session_factory() as db:
+                result = await db.execute(select(BrowserSessionModel).where(BrowserSessionModel.task_id == task_id))
+                db_session = result.scalar_one_or_none()
+                if db_session:
+                    db_session.session_dir = base_dir
+                    db_session.is_active = True
+                else:
+                    db.add(BrowserSessionModel(task_id=task_id, session_dir=base_dir, is_active=True))
+                await db.commit()
+        except Exception as db_err:
+            logger.warning("Could not persist browser session %s to database: %s", session_id, db_err)
+        logger.info(f"Created browser session {session_id} for task {task_id} (proxy={bool(proxy_config)}).")
         return session
+
+    async def fallback_session_to_direct(
+        self,
+        task_id: str,
+        owner_key: Optional[str] = None,
+        frame_callback: Optional[Callable[[str], Awaitable[None]]] = None,
+    ) -> BrowserSession:
+        """Disables proxy for this session and reopens a clean direct context."""
+        old_session = self._active_sessions.pop(task_id, None)
+        if old_session:
+            try:
+                await old_session.close()
+            except Exception as e:
+                logger.debug("Error closing old session during direct fallback: %s", e)
+        logger.info("Falling back to direct connection for task %s...", task_id)
+        return await self.create_session(
+            task_id=task_id,
+            owner_key=owner_key,
+            frame_callback=frame_callback,
+            use_proxy=False,
+        )
 
     def get_session(self, task_id: str) -> Optional[BrowserSession]:
         session = self._active_sessions.get(task_id)
