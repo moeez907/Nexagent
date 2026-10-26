@@ -530,7 +530,7 @@ export default function BrowserPreview({
         ) : viewMode === 'vnc' ? (
           <div style={{ width: '100%', height: '100%', minHeight: '520px', position: 'relative' }}>
             <iframe
-              src="/vnc/vnc.html?autoconnect=true&resize=scale&reconnect=true"
+              src="/vnc/vnc_lite.html?autoconnect=true&resize=scale&reconnect=true&path=websockify"
               title="Real Google Chrome Embedded Desktop Session"
               allow="clipboard-read; clipboard-write"
               style={{

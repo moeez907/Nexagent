@@ -11,10 +11,10 @@ openbox &
 sleep 0.5
 
 echo "🖥️ Starting x11vnc server on port 5900..."
-x11vnc -display :99 -forever -shared -nopw -rfbport 5900 -bg
+x11vnc -display :99 -forever -shared -nopw -rfbport 5900 -listen 0.0.0.0 -bg -quiet
 
-echo "🌐 Starting noVNC Websockify bridge on 0.0.0.0:6080..."
-websockify --web /usr/share/novnc 0.0.0.0:6080 127.0.0.1:5900 &
+echo "🌐 Starting noVNC Websockify bridge on port 6080..."
+websockify --web /usr/share/novnc 6080 127.0.0.1:5900 &
 sleep 0.5
 
 echo "⚡ Starting NexAgent FastAPI backend on port 8000..."
