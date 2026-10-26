@@ -148,7 +148,7 @@ export default function TaskHistory({ tasks = [], onSelectTask, activeTaskId, on
                   transition: 'all 0.15s ease'
                 }}
               >
-                {/* Top Row: Status Pill + Timestamp */}
+                {/* Top Row: Status Pill + Timestamp + Delete Button */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <span style={{
                     fontSize: '0.62rem',
@@ -162,9 +162,45 @@ export default function TaskHistory({ tasks = [], onSelectTask, activeTaskId, on
                   }}>
                     {isCompleted ? 'COMPLETED' : (isActive ? (task.status || 'ACTIVE') : 'ARCHIVED')}
                   </span>
-                  <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 500 }}>
-                    {formatRelativeTime(task.updated_at || task.created_at || task.completed_at)}
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 500 }}>
+                      {formatRelativeTime(task.updated_at || task.created_at || task.completed_at)}
+                    </span>
+                    {onDeleteTask && (
+                      <button
+                        type="button"
+                        title="Delete this task"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (window.confirm("Are you sure you want to delete this task?")) {
+                            onDeleteTask(task.id);
+                          }
+                        }}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: '#94a3b8',
+                          cursor: 'pointer',
+                          padding: '3px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          borderRadius: '4px',
+                          transition: 'all 0.15s ease'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.color = '#ef4444';
+                          e.currentTarget.style.backgroundColor = '#fee2e2';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.color = '#94a3b8';
+                          e.currentTarget.style.backgroundColor = 'transparent';
+                        }}
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* Task Title */}
@@ -186,32 +222,6 @@ export default function TaskHistory({ tasks = [], onSelectTask, activeTaskId, on
                 <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 500 }}>
                   {getSubMeta(task)}
                 </div>
-
-                {/* Delete button on hover */}
-                {onDeleteTask && (
-                  <button
-                    type="button"
-                    title="Delete session"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onDeleteTask(task.id);
-                    }}
-                    style={{
-                      position: 'absolute',
-                      top: '0.5rem',
-                      right: '0.5rem',
-                      background: 'none',
-                      border: 'none',
-                      color: '#cbd5e1',
-                      cursor: 'pointer',
-                      padding: '2px',
-                      display: 'none'
-                    }}
-                    className="session-delete-hover"
-                  >
-                    <X size={12} />
-                  </button>
-                )}
               </div>
             );
           })

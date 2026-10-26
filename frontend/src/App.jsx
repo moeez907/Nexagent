@@ -636,15 +636,18 @@ export default function App() {
   const handleDeleteTask = async (taskId) => {
     try {
       await deleteTask(taskId);
-      setHistoryTasks(prev => prev.filter(t => t.id !== taskId));
+      setHistoryTasks(prev => prev.filter(t => t.id !== taskId && (!t.session_task_ids || !t.session_task_ids.includes(taskId))));
       setSessionTaskIds(prev => prev.filter(id => id !== taskId));
       setTasksData(prev => {
         const next = { ...prev };
         delete next[taskId];
         return next;
       });
-      if (activeTaskId === taskId) {
+      if (activeTaskId === taskId || (sessionTaskIds && sessionTaskIds.includes(taskId))) {
         setActiveTaskId(null);
+        try {
+          localStorage.removeItem('nexagent_active_task_id');
+        } catch {}
         setTaskState(null);
         setEvents([]);
         setResult(null);
