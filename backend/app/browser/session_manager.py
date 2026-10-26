@@ -30,13 +30,18 @@ class BrowserSession:
         self._stream_callback: Optional[Callable[[str], Awaitable[None]]] = None
         self.seed_path = seed_path
 
-    async def persist_storage_state(self):
-        if not self.seed_path:
+    async def persist_storage_state(self, path: Optional[str] = None):
+        target_path = path or self.seed_path
+        if not target_path:
             return
-        state = await self.context.storage_state()
-        os.makedirs(os.path.dirname(self.seed_path), exist_ok=True)
-        with open(self.seed_path, "w", encoding="utf-8") as state_file:
-            json.dump(state, state_file)
+        try:
+            state = await self.context.storage_state()
+            os.makedirs(os.path.dirname(target_path), exist_ok=True)
+            with open(target_path, "w", encoding="utf-8") as state_file:
+                json.dump(state, state_file)
+            logger.info("Browser storage state persisted to: %s", target_path)
+        except Exception as err:
+            logger.warning("Could not persist browser storage state to %s: %s", target_path, err)
 
     async def start_live_stream(self, callback: Callable[[str], Awaitable[None]]):
         """Stream the actual browser page through CDP without screenshot polling."""
@@ -298,10 +303,14 @@ class BrowserSessionManager:
                 logger.info("Launched clean Chromium host for task-isolated browser contexts.")
             logger.info("Playwright Chromium browser initialized.")
 
-    @staticmethod
-    def _seed_path(owner_key: Optional[str]) -> Optional[str]:
+    @classmethod
+    def get_default_seed_path(cls) -> str:
+        return os.path.abspath(os.path.join(settings.BROWSER_PROFILE_DIR, "task_seeds", "default.json"))
+
+    @classmethod
+    def _seed_path(cls, owner_key: Optional[str]) -> str:
         if not owner_key:
-            return None
+            return cls.get_default_seed_path()
         safe_key = hashlib.sha256(owner_key.encode("utf-8")).hexdigest()
         return os.path.abspath(os.path.join(settings.BROWSER_PROFILE_DIR, "task_seeds", f"{safe_key}.json"))
 
@@ -322,12 +331,19 @@ class BrowserSessionManager:
         async with self._context_lock:
             storage_state = None
             seed_path = self._seed_path(owner_key)
+            target_load_path = None
             if seed_path and os.path.isfile(seed_path):
+                target_load_path = seed_path
+            elif os.path.isfile(self.get_default_seed_path()):
+                target_load_path = self.get_default_seed_path()
+
+            if target_load_path:
                 try:
-                    with open(seed_path, "r", encoding="utf-8") as state_file:
+                    with open(target_load_path, "r", encoding="utf-8") as state_file:
                         storage_state = json.load(state_file)
+                    logger.info("Loaded browser storage state seed from: %s", target_load_path)
                 except (OSError, json.JSONDecodeError) as error:
-                    logger.warning("Could not load task seed state: %s", error)
+                    logger.warning("Could not load task seed state from %s: %s", target_load_path, error)
 
             source_browser = self._browser
             if source_browser is None:

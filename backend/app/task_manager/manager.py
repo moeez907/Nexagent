@@ -509,13 +509,66 @@ class TaskManager:
             return {}
 
     async def _google_account_is_authenticated(self, session) -> bool:
-        """Check the current page without navigating away from the user's destination."""
-        current_url = session.page.url.lower()
-        if "signin" in current_url or "identifier" in current_url:
+        """
+        Comprehensive check to determine whether a Google account is logged in.
+        Checks browser cookies, current URL, and DOM elements on Google.
+        """
+        try:
+            current_url = (session.page.url or "").lower()
+
+            # Active sign-in / challenge page markers mean NOT authenticated
+            if "accounts.google.com" in current_url and any(
+                marker in current_url for marker in ("signin", "identifier", "challenge", "servicelogin", "speedbump", "v3/signin")
+            ):
+                return False
+
+            if "myaccount.google.com" in current_url:
+                return True
+
+            # 1. Check browser context cookies for Google session auth tokens
+            has_auth_cookie = False
+            try:
+                cookies = await session.context.cookies(["https://www.google.com", "https://accounts.google.com"])
+                google_auth_cookies = {"SID", "SSID", "HSID", "__Secure-1PSID", "__Secure-3PSID", "SAPISID"}
+                has_auth_cookie = any(
+                    c.get("name") in google_auth_cookies and bool(c.get("value"))
+                    for c in cookies
+                )
+            except Exception as cookie_err:
+                logger.debug("Could not inspect cookies for Google auth check: %s", cookie_err)
+
+            # 2. If currently on google.com or accounts.google.com, inspect the live DOM
+            if "google." in current_url or "accounts.google.com" in current_url:
+                # Dismiss cookie consent modal if visible
+                try:
+                    consent_btn = session.page.locator(
+                        'button:has-text("Accept all"), button:has-text("I agree"), button:has-text("Reject all"), div[role="dialog"] button:has-text("Accept")'
+                    ).first
+                    if await consent_btn.is_visible(timeout=1000):
+                        await consent_btn.click()
+                        await asyncio.sleep(0.5)
+                except Exception:
+                    pass
+
+                # Check for Google Account profile/avatar indicators
+                avatar_locator = session.page.locator(
+                    'a[href*="SignOutOptions"], [aria-label*="Google Account"], a[href*="ManageAccount"], a[href*="myaccount.google.com"], #gb a[href*="SignOutOptions"], img[alt*="Google Account"]'
+                )
+                if await avatar_locator.count() > 0:
+                    return True
+
+                # Check for explicit Sign in button
+                signin_locator = session.page.locator(
+                    'a[href*="accounts.google.com/ServiceLogin"], a[href*="ServiceLogin"], a[aria-label*="Sign in"], a:has-text("Sign in"), a:has-text("Sign In")'
+                )
+                if await signin_locator.count() > 0:
+                    return False
+
+            # Fall back to auth cookie presence
+            return has_auth_cookie
+        except Exception as e:
+            logger.warning("Error verifying Google account authentication: %s", e)
             return False
-        if "myaccount.google.com" in current_url:
-            return True
-        return await session.page.locator('a[href*="SignOutOptions"], [aria-label*="Google Account"]').count() > 0
 
     @staticmethod
     def _is_google_authentication_page(url: str) -> bool:
@@ -528,7 +581,7 @@ class TaskManager:
     async def _wait_for_account_login(self, task_id: str, session) -> bool:
         """Give the user an interactive live browser window for manual account login."""
         await self._update_task_status(task_id, TaskStatus.WAITING_FOR_HUMAN)
-        prompt = "Please sign in to your Google Account in the live browser preview below. Once signed in, click Continue to proceed with your task."
+        prompt = "Please sign in to your Google Account in the Live Browser preview on the right. Once signed in, click Continue to proceed with your task."
         await self._create_intervention(
             task_id=task_id,
             intervention_type=HumanInterventionType.ACCOUNT_LOGIN_REQUIRED,
@@ -552,16 +605,51 @@ class TaskManager:
             "prompt": prompt,
             "url": session.page.url
         })
-        resolution = await human_controller.wait_for_resolution(task_id)
-        if resolution.get("status") != HumanInterventionStatus.APPROVED.value:
-            return False
 
-        # Wait briefly for page to settle after user clicks Continue
-        try:
-            await session.page.wait_for_load_state("domcontentloaded", timeout=10000)
-            await asyncio.sleep(2.0)
-        except Exception:
-            pass
+        while True:
+            resolution = await human_controller.wait_for_resolution(task_id)
+            if resolution.get("status") != HumanInterventionStatus.APPROVED.value:
+                return False
+
+            # Wait briefly for page to settle after user clicks Continue
+            try:
+                await session.page.wait_for_load_state("domcontentloaded", timeout=10000)
+                await asyncio.sleep(2.0)
+            except Exception:
+                pass
+
+            # Verify if user actually logged in
+            if await self._google_account_is_authenticated(session):
+                logger.info("Google Account login confirmed for task %s.", task_id)
+                break
+
+            # If still on accounts.google.com login page, prompt user again
+            if self._is_google_authentication_page(session.page.url):
+                logger.info("User clicked Continue, but is still on Google Sign-in page for task %s. Re-prompting.", task_id)
+                retry_prompt = "Google Account sign-in is not finished yet. Please enter your credentials and finish signing in in the Live Browser preview on the right, then click Continue."
+                await self._create_intervention(
+                    task_id=task_id,
+                    intervention_type=HumanInterventionType.ACCOUNT_LOGIN_REQUIRED,
+                    prompt=retry_prompt,
+                    action_payload={"url": session.page.url}
+                )
+                try:
+                    screenshot_path = await session.capture_screenshot("google_login_retry.png")
+                    await self._broadcast(task_id, "BROWSER_OBSERVED", {
+                        "step": 0,
+                        "url": session.page.url,
+                        "title": await session.page.title(),
+                        "screenshot_path": screenshot_path,
+                    })
+                except Exception:
+                    pass
+                await self._broadcast(task_id, "ACCOUNT_LOGIN_REQUIRED", {
+                    "prompt": retry_prompt,
+                    "url": session.page.url
+                })
+                continue
+            else:
+                break
 
         # Save cookies & storage state so Google login is remembered for all tasks!
         try:
@@ -865,25 +953,56 @@ class TaskManager:
                 frame_callback=frame_cb,
             )
 
-        # Enforce one-time initial Google Login per user account if requested and not yet seeded
-        if (
-            settings.BROWSER_REQUIRE_LOGIN_BEFORE_TASK
-            and session.seed_path
-            and not os.path.isfile(session.seed_path)
-            and not is_continued_session
-        ):
-            logger.info("First-time session for %s: Requesting one-time Google Account login.", owner_key)
+        # 1. Initialize and open Google in the browser if starting fresh
+        if not is_continued_session or session.page.url in ("about:blank", ""):
+            logger.info("Opening Google (https://www.google.com) for task %s", task_id)
             try:
-                await session.page.goto("https://accounts.google.com/", wait_until="domcontentloaded", timeout=30000)
-                await self._wait_for_account_login(task_id, session)
-            except Exception as login_err:
-                logger.warning("One-time Google login requirement encountered: %s", login_err)
+                await session.page.goto("https://www.google.com", wait_until="domcontentloaded", timeout=30000)
+                await asyncio.sleep(1.0)
+            except Exception as nav_err:
+                logger.warning("Error navigating to Google: %s", nav_err)
 
-        # Start URL policy:
-        # 1. If user provided an explicit URL in goal, navigate to it.
-        # 2. If continuing an existing live session, DO NOT navigate; stay on current page.
-        # 3. If continuing parent but browser was reopened, navigate to parent's last visited URL.
-        # 4. Otherwise, open default start URL.
+            # Broadcast frame so Live Browser in UI immediately shows Google
+            try:
+                screenshot_path = await session.capture_screenshot("initial_google.jpg")
+                await self._broadcast(task_id, "BROWSER_OBSERVED", {
+                    "step": 0,
+                    "url": session.page.url,
+                    "title": await session.page.title(),
+                    "screenshot_path": screenshot_path,
+                })
+            except Exception as err:
+                logger.debug("Initial screenshot broadcast warning: %s", err)
+
+        # 2. Check if user Google Account is already logged in
+        is_google_logged_in = await self._google_account_is_authenticated(session)
+        if is_google_logged_in:
+            logger.info("Google Account is already logged in in live browser session for task %s. Proceeding with task.", task_id)
+        else:
+            logger.info("Google Account is NOT logged in for task %s. User must log in before proceeding.", task_id)
+            try:
+                if not self._is_google_authentication_page(session.page.url):
+                    await session.page.goto("https://accounts.google.com/", wait_until="domcontentloaded", timeout=30000)
+            except Exception as nav_err:
+                logger.warning("Error opening Google Sign In: %s", nav_err)
+
+            login_ok = await self._wait_for_account_login(task_id, session)
+            if not login_ok:
+                await self._finish_task_failure(
+                    task_id,
+                    goal,
+                    "Google account login was not completed. Task aborted.",
+                    start_time,
+                    visited_urls,
+                    start_step,
+                )
+                return
+
+        # 3. Post-login destination routing:
+        # If user provided an explicit URL in goal, navigate to it.
+        # If continuing an existing live session, DO NOT navigate; stay on current page.
+        # If continuing parent but browser was reopened, navigate to parent's last visited URL.
+        # Otherwise, open default start URL (or keep Google).
         user_urls = url_guard.register_user_urls(task_id, goal)
         if user_urls:
             target_url = user_urls[0]
@@ -893,7 +1012,7 @@ class TaskManager:
                     await session.page.goto(target_url, wait_until="domcontentloaded", timeout=30000)
                 except Exception as nav_err:
                     logger.warning("User URL navigation error for task %s: %s", task_id, nav_err)
-        elif is_continued_session:
+        elif is_continued_session and session.page.url not in ("about:blank", "") and "accounts.google.com" not in session.page.url:
             logger.info("Task continuation active: keeping current page at %s without reloading default URL.", session.page.url)
         elif parent_context and parent_context.get("parent_url") and parent_context.get("parent_url") not in ("about:blank", ""):
             resume_url = parent_context.get("parent_url")
@@ -903,13 +1022,13 @@ class TaskManager:
             except Exception as nav_err:
                 logger.warning("Resume URL navigation error for task %s: %s", task_id, nav_err)
         else:
-            default_url = settings.BROWSER_DEFAULT_START_URL.strip()
-            if default_url and session.page.url != default_url:
+            default_url = settings.BROWSER_DEFAULT_START_URL.strip() or "https://www.google.com"
+            if "accounts.google.com" in session.page.url or session.page.url in ("about:blank", ""):
                 try:
-                    logger.info("No explicit user URL in goal. Opening configured default entry URL: %s", default_url)
+                    logger.info("Returning to default entry URL post-auth: %s", default_url)
                     await session.page.goto(default_url, wait_until="domcontentloaded", timeout=30000)
                 except Exception as nav_err:
-                    logger.warning("Configured default entry URL navigation error for task %s: %s", task_id, nav_err)
+                    logger.warning("Default URL navigation error for task %s: %s", task_id, nav_err)
 
         try:
             safety_step_limit = max(settings.MAX_TASK_STEPS, 200)
@@ -1621,6 +1740,9 @@ class TaskManager:
             try:
                 if session and hasattr(session, "page") and session.page and not session.page.is_closed():
                     await session.persist_storage_state()
+                    default_seed = session_manager.get_default_seed_path()
+                    if session.seed_path != default_seed:
+                        await session.persist_storage_state(default_seed)
             except Exception as storage_error:
                 logger.debug("Could not persist browser account state for task %s: %s", task_id, storage_error)
 

@@ -947,12 +947,27 @@ export default function App() {
                     <div className="chat-message intervention-message">
                       <div className="message-avatar warning-avatar">!</div>
                       <div className="intervention-content">
-                        <strong>Action needed from you</strong>
-                        <p>{displayIntervention.prompt || 'Please complete the required browser verification.'}</p>
+                        <strong style={{ fontSize: '0.98rem', color: displayIntervention.intervention_type === 'ACCOUNT_LOGIN_REQUIRED' ? '#1d4ed8' : '#0f172a' }}>
+                          {displayIntervention.intervention_type === 'ACCOUNT_LOGIN_REQUIRED'
+                            ? 'Google Account Sign-In Required'
+                            : displayIntervention.intervention_type === 'CAPTCHA'
+                            ? 'Human Verification / CAPTCHA Detected'
+                            : 'Action needed from you'}
+                        </strong>
+                        <p style={{ marginTop: '0.3rem', marginBottom: '0.5rem', lineHeight: '1.45' }}>
+                          {displayIntervention.prompt || 'Please complete the required browser verification.'}
+                        </p>
+                        {displayIntervention.intervention_type === 'ACCOUNT_LOGIN_REQUIRED' && (
+                          <div style={{ fontSize: '0.84rem', color: '#1e3a8a', background: '#eff6ff', padding: '0.65rem 0.85rem', borderRadius: '7px', border: '1px solid #bfdbfe', marginBottom: '0.65rem' }}>
+                            Sign in to your Google Account directly in the <strong>Live Browser Preview</strong> on the right. Once signed in, click <strong>Continue (Signed In)</strong> below to proceed with your task.
+                          </div>
+                        )}
                         <div className="inline-actions">
                           {displayIntervention.intervention_type !== 'FORM_INPUT_REQUIRED' && (
                             displayIntervention.intervention_type !== 'FILE_UPLOAD_REQUIRED' && (
-                              <button className="btn-approve" disabled={isHumanResponseSubmitting} onClick={() => handleHumanResponse(true)}>{isHumanResponseSubmitting ? 'Processing...' : 'Continue'}</button>
+                              <button className="btn-approve" disabled={isHumanResponseSubmitting} onClick={() => handleHumanResponse(true)}>
+                                {isHumanResponseSubmitting ? 'Processing...' : (displayIntervention.intervention_type === 'ACCOUNT_LOGIN_REQUIRED' ? 'Continue (Signed In)' : 'Continue')}
+                              </button>
                             )
                           )}
                           {displayIntervention.intervention_type === 'FILE_UPLOAD_REQUIRED' && (
