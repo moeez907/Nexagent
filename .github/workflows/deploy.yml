@@ -34,9 +34,9 @@ jobs:
             cd "$APP_DIR"
 
             # Pull latest changes from main branch
-            echo "📥 Pulling latest code..."
-            git reset --hard
-            git pull origin main
+            echo "📥 Fetching and syncing latest code..."
+            git fetch origin main
+            git reset --hard origin/main
 
             # Ensure .env has the required secrets
             echo "⚙️ Updating environment secrets..."
