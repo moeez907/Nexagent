@@ -533,7 +533,10 @@ async def resume_human_intervention(
         response_data=payload.response_data
     )
     if not success:
-        raise HTTPException(status_code=400, detail="No pending human intervention found for this task.")
+        if task_id in task_manager.paused_tasks:
+            await task_manager.resume_task(task_id)
+            return {"status": "success", "message": "Task execution resumed from pause."}
+        return {"status": "success", "message": "Intervention already resolved or no longer pending."}
 
     intervention_stmt = select(HumanInterventionModel).where(
         HumanInterventionModel.task_id == task_id,
@@ -805,7 +808,13 @@ async def get_task_live_frame(
     await ensure_task_access(task_id, db, user, guest_id)
     session = session_manager.get_session(task_id)
     if not session or not session.page or session.page.is_closed():
-        raise HTTPException(status_code=404, detail="Active browser session not found for this task.")
+        task_res = await db.execute(select(TaskModel).where(TaskModel.id == task_id))
+        t = task_res.scalar_one_or_none()
+        return {
+            "url": t.current_url if (t and t.current_url) else "",
+            "title": "",
+            "frame_data": None
+        }
 
     try:
         frame_data = await session.capture_base64_frame()
@@ -823,9 +832,12 @@ async def get_task_live_frame(
             "frame_data": frame_data
         }
     except Exception as e:
-        if "closed" in str(e).lower():
-            raise HTTPException(status_code=404, detail="Browser session has ended.")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.debug("Error capturing live frame for task %s: %s", task_id, e)
+        return {
+            "url": session.page.url if (session and session.page and not session.page.is_closed()) else "",
+            "title": "",
+            "frame_data": None
+        }
 
 
 @router.get("/tasks/{task_id}/screenshot/{filename}")

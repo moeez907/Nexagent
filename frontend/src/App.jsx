@@ -956,7 +956,7 @@ export default function App() {
                   />
 
                   {/* Human Intervention Box */}
-                  {displayIntervention && (
+                  {displayIntervention && displayStatus !== 'PAUSED' && !['COMPLETED', 'FAILED', 'CANCELLED'].includes(displayStatus) && (
                     <div className="chat-message intervention-message">
                       <div className="message-avatar warning-avatar">!</div>
                       <div className="intervention-content">

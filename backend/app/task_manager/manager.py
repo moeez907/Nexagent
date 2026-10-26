@@ -612,53 +612,29 @@ class TaskManager:
             "url": session.page.url
         })
 
-        while True:
-            resolution = await human_controller.wait_for_resolution(task_id)
-            if resolution.get("status") != HumanInterventionStatus.APPROVED.value:
-                return False
+        resolution = await human_controller.wait_for_resolution(task_id)
+        if resolution.get("status") != HumanInterventionStatus.APPROVED.value:
+            return False
 
-            # Wait briefly for page to settle after user clicks Continue
+        # Wait briefly for page to settle after user clicks Continue
+        try:
+            await session.page.wait_for_load_state("domcontentloaded", timeout=5000)
+            await asyncio.sleep(1.0)
+        except Exception:
+            pass
+
+        # Check and persist auth cookies if logged in
+        if await self._google_account_is_authenticated(session):
+            logger.info("Google Account login confirmed for task %s.", task_id)
             try:
-                await session.page.wait_for_load_state("domcontentloaded", timeout=10000)
-                await asyncio.sleep(2.0)
-            except Exception:
-                pass
+                await session.persist_storage_state()
+            except Exception as e:
+                logger.warning("Could not persist storage state post-login: %s", e)
+        else:
+            logger.info("User clicked Continue for task %s. Proceeding directly with user goal.", task_id)
 
-            # Verify if user actually logged in
-            if await self._google_account_is_authenticated(session):
-                logger.info("Google Account login confirmed for task %s.", task_id)
-                break
-
-            # If still on accounts.google.com login page, prompt user again
-            if self._is_google_authentication_page(session.page.url):
-                logger.info("User clicked Continue, but is still on Google Sign-in page for task %s. Re-prompting.", task_id)
-                retry_prompt = "Google Account sign-in is not finished yet. Please enter your credentials and finish signing in in the Live Browser preview on the right, then click Continue."
-                await self._create_intervention(
-                    task_id=task_id,
-                    intervention_type=HumanInterventionType.ACCOUNT_LOGIN_REQUIRED,
-                    prompt=retry_prompt,
-                    action_payload={"url": session.page.url}
-                )
-                try:
-                    retry_frame = await session.capture_base64_frame()
-                    if retry_frame:
-                        await self._broadcast(task_id, "BROWSER_FRAME", {"frame_data": retry_frame}, persist=False)
-                    screenshot_path = await session.capture_screenshot("google_login_retry.png")
-                    await self._broadcast(task_id, "BROWSER_OBSERVED", {
-                        "step": 0,
-                        "url": session.page.url,
-                        "title": await session.page.title(),
-                        "screenshot_path": screenshot_path,
-                    })
-                except Exception:
-                    pass
-                await self._broadcast(task_id, "ACCOUNT_LOGIN_REQUIRED", {
-                    "prompt": retry_prompt,
-                    "url": session.page.url
-                })
-                continue
-            else:
-                break
+        await self._update_task_status(task_id, TaskStatus.RUNNING, current_url=session.page.url)
+        return True
 
         # Save cookies & storage state so Google login is remembered for all tasks!
         try:
