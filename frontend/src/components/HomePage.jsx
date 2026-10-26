@@ -90,7 +90,6 @@ export default function HomePage({ onGetStarted, onSignIn, onLogout, onSelectMis
             <a href="#features" onClick={(e) => scrollToSection(e, 'features')}>Features</a>
             <a href="#how-it-works" onClick={(e) => scrollToSection(e, 'how-it-works')}>How it Works</a>
             <a href="#missions" onClick={(e) => scrollToSection(e, 'missions')}>Agent Missions</a>
-            <a href="#architecture" onClick={(e) => scrollToSection(e, 'architecture')}>Architecture</a>
             <a href="#features" onClick={(e) => scrollToSection(e, 'features')}>Docs</a>
           </nav>
 
@@ -360,30 +359,6 @@ export default function HomePage({ onGetStarted, onSignIn, onLogout, onSelectMis
         </div>
       </section>
 
-      {/* Enterprise Tech Bar */}
-      <section id="architecture" className="tech-proof-bar">
-        <div className="tech-proof-inner">
-          <span className="tech-proof-label">BUILT FOR ENTERPRISE-GRADE WEB INTELLIGENCE</span>
-          <div className="tech-proof-badges">
-            <div className="proof-badge">
-              <Cpu size={16} className="badge-ico" />
-              <span>NVIDIA Nemotron 3.5 LLM</span>
-            </div>
-            <div className="proof-badge">
-              <Globe size={16} className="badge-ico" />
-              <span>Chromium Stealth Engine</span>
-            </div>
-            <div className="proof-badge">
-              <Zap size={16} className="badge-ico" />
-              <span>Real-Time WebSocket Stream</span>
-            </div>
-            <div className="proof-badge">
-              <ShieldCheck size={16} className="badge-ico" />
-              <span>Anti-Fingerprint & CAPTCHA Protocol</span>
-            </div>
-          </div>
-        </div>
-      </section>
 
       {/* Feature Section: UNRIVALED AUTONOMY */}
       <section id="features" className="home-section-features">
