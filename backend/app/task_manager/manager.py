@@ -1564,6 +1564,12 @@ class TaskManager:
 
                     if exec_result.get("success"):
                         logger.info("Playwright code execution succeeded on attempt %s at step %s", code_attempt, step)
+                        try:
+                            immediate_frame = await session.capture_base64_frame()
+                            if immediate_frame:
+                                await self._broadcast(task_id, "BROWSER_FRAME", {"frame_data": immediate_frame}, persist=False)
+                        except Exception:
+                            pass
                         break
                     else:
                         last_exec_error = exec_result.get("error", "Execution failed")

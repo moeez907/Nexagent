@@ -31,9 +31,6 @@ export default function BrowserPreview({ currentUrl, screenshotUrl, onInteract }
   }, [currentUrl]);
 
   useEffect(() => {
-    if (screenshotUrl) {
-      setLiveFrame(null);
-    }
     setHasImageError(false);
   }, [screenshotUrl, liveFrame]);
 
