@@ -335,13 +335,13 @@ class BrowserSessionManager:
         logger.info("Playwright Chromium browser initialized.")
 
     @classmethod
-    def get_default_seed_path(cls) -> str:
-        return os.path.abspath(os.path.join(settings.BROWSER_PROFILE_DIR, "task_seeds", "default.json"))
+    def get_default_seed_path(cls) -> Optional[str]:
+        return None
 
     @classmethod
-    def _seed_path(cls, owner_key: Optional[str]) -> str:
+    def _seed_path(cls, owner_key: Optional[str]) -> Optional[str]:
         if not owner_key:
-            return cls.get_default_seed_path()
+            return None
         safe_key = hashlib.sha256(owner_key.encode("utf-8")).hexdigest()
         return os.path.abspath(os.path.join(settings.BROWSER_PROFILE_DIR, "task_seeds", f"{safe_key}.json"))
 
@@ -363,19 +363,15 @@ class BrowserSessionManager:
         async with self._context_lock:
             storage_state = None
             seed_path = self._seed_path(owner_key)
-            target_load_path = None
             if seed_path and os.path.isfile(seed_path):
-                target_load_path = seed_path
-            elif os.path.isfile(self.get_default_seed_path()):
-                target_load_path = self.get_default_seed_path()
-
-            if target_load_path:
                 try:
-                    with open(target_load_path, "r", encoding="utf-8") as state_file:
+                    with open(seed_path, "r", encoding="utf-8") as state_file:
                         storage_state = json.load(state_file)
-                    logger.info("Loaded browser storage state seed from: %s", target_load_path)
+                    logger.info("Loaded isolated browser storage state for owner %s from: %s", owner_key, seed_path)
                 except (OSError, json.JSONDecodeError) as error:
-                    logger.warning("Could not load task seed state from %s: %s", target_load_path, error)
+                    logger.warning("Could not load task seed state from %s: %s", seed_path, error)
+            else:
+                logger.info("Starting fresh isolated browser context for owner %s (no seed).", owner_key)
 
             source_browser = self._browser
             if source_browser is None:
@@ -489,10 +485,6 @@ class BrowserSessionManager:
         session = self._active_sessions.get(task_id)
         if session and not session.page.is_closed():
             return session
-        # Check any active open session in memory
-        for tid, s in self._active_sessions.items():
-            if s and not s.page.is_closed():
-                return s
         return None
 
     async def get_or_create_interactive_session(self, task_id: str, default_url: Optional[str] = None) -> Optional[BrowserSession]:

@@ -649,13 +649,11 @@ class TaskManager:
         else:
             logger.info("User clicked Continue for task %s. Proceeding with Google open.", task_id)
 
-        # Save cookies & storage state so Google login is remembered for all future tasks!
+        # Save cookies & storage state so Google login is remembered for this user's future tasks!
         try:
-            await session.persist_storage_state()
-            default_seed = session_manager.get_default_seed_path()
-            if session.seed_path != default_seed:
-                await session.persist_storage_state(default_seed)
-            logger.info("Successfully persisted Google login state for task %s.", task_id)
+            if session.seed_path:
+                await session.persist_storage_state(session.seed_path)
+                logger.info("Successfully persisted isolated login state for task %s to %s.", task_id, session.seed_path)
         except Exception as e:
             logger.warning("Could not persist storage state post-login: %s", e)
 
@@ -1770,10 +1768,8 @@ class TaskManager:
         finally:
             try:
                 if session and hasattr(session, "page") and session.page and not session.page.is_closed():
-                    await session.persist_storage_state()
-                    default_seed = session_manager.get_default_seed_path()
-                    if session.seed_path != default_seed:
-                        await session.persist_storage_state(default_seed)
+                    if session.seed_path:
+                        await session.persist_storage_state(session.seed_path)
             except Exception as storage_error:
                 logger.debug("Could not persist browser account state for task %s: %s", task_id, storage_error)
 
