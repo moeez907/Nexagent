@@ -615,6 +615,7 @@ class TaskManager:
                 "url": session.page.url,
                 "title": await session.page.title(),
                 "screenshot_path": screenshot_path,
+                "frame_data": frame_data,
             })
         except Exception as err:
             logger.debug("Screenshot error during login wait: %s", err)
@@ -668,6 +669,7 @@ class TaskManager:
                 "url": session.page.url,
                 "title": await session.page.title(),
                 "screenshot_path": screenshot_path,
+                "frame_data": frame_data,
             })
         except Exception as err:
             logger.debug("Post-login live frame broadcast warning: %s", err)
@@ -994,6 +996,7 @@ class TaskManager:
                     "url": session.page.url,
                     "title": await session.page.title(),
                     "screenshot_path": screenshot_path,
+                    "frame_data": frame_data,
                 })
             except Exception as err:
                 logger.debug("Initial screenshot broadcast warning: %s", err)
@@ -1149,11 +1152,17 @@ class TaskManager:
                     if current_url and current_url not in visited_urls:
                         visited_urls.append(current_url)
                     screenshot_path = await session.capture_screenshot(f"step_{step}_resolved.png")
+                    frame_data_res = None
+                    try:
+                        frame_data_res = await session.capture_base64_frame()
+                    except Exception:
+                        pass
                     await self._broadcast(task_id, "BROWSER_OBSERVED", {
                         "step": step,
                         "url": current_url,
                         "title": browser_state.get("title"),
                         "screenshot_path": screenshot_path,
+                        "frame_data": frame_data_res,
                         "interactive_count": len(browser_state.get("interactive_elements", []))
                     })
 

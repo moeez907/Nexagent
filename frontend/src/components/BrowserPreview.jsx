@@ -4,7 +4,13 @@ import {
   ArrowLeft, ArrowRight, RotateCw, Lock, ShieldCheck, Plus, X, Home
 } from 'lucide-react';
 
-export default function BrowserPreview({ currentUrl, screenshotUrl, onInteract }) {
+export default function BrowserPreview({
+  currentUrl,
+  screenshotUrl,
+  onInteract,
+  taskStatus,
+  pendingIntervention
+}) {
   const [navUrl, setNavUrl] = useState('');
   const [liveFrame, setLiveFrame] = useState(null);
   const [lastClick, setLastClick] = useState(null);
@@ -34,8 +40,26 @@ export default function BrowserPreview({ currentUrl, screenshotUrl, onInteract }
     const next = liveFrame || screenshotUrl;
     if (next) {
       setDisplayedSrc(next);
+      if (imageRef.current) {
+        imageRef.current.src = next;
+      }
     }
   }, [liveFrame, screenshotUrl]);
+
+  // High-performance direct frame rendering (zero React re-render jank)
+  useEffect(() => {
+    const handleLiveFrame = (e) => {
+      const frameData = e.detail;
+      if (!frameData) return;
+      if (imageRef.current) {
+        imageRef.current.src = frameData;
+      }
+      setDisplayedSrc((prev) => prev || frameData);
+    };
+
+    window.addEventListener('awa:live_browser_frame', handleLiveFrame);
+    return () => window.removeEventListener('awa:live_browser_frame', handleLiveFrame);
+  }, []);
 
   // Extract clean domain name for Chrome tab title
   const getTabTitle = () => {
@@ -48,6 +72,45 @@ export default function BrowserPreview({ currentUrl, screenshotUrl, onInteract }
     }
   };
 
+  const getStatusBadge = () => {
+    if (pendingIntervention) {
+      return {
+        text: 'Action Required (CAPTCHA / Login)',
+        color: '#d97706',
+        bg: '#fef3c7',
+        border: '#fde68a',
+        pulse: true,
+      };
+    }
+    if (taskStatus === 'PLANNING') {
+      return {
+        text: 'AI Analyzing & Planning...',
+        color: '#7c3aed',
+        bg: '#ede9fe',
+        border: '#ddd6fe',
+        pulse: true,
+      };
+    }
+    if (taskStatus === 'RUNNING') {
+      return {
+        text: 'Chrome Executing Action...',
+        color: '#059669',
+        bg: '#d1fae5',
+        border: '#a7f3d0',
+        pulse: true,
+      };
+    }
+    return {
+      text: 'Live Chrome Session Active',
+      color: '#0284c7',
+      bg: '#e0f2fe',
+      border: '#bae6fd',
+      pulse: false,
+    };
+  };
+
+  const statusBadge = getStatusBadge();
+
   const executeInteraction = useCallback(async (payload) => {
     if (!onInteract) return;
     // Only lock UI on full-page navigations, not during high-frequency mouse movements or typing
@@ -56,6 +119,9 @@ export default function BrowserPreview({ currentUrl, screenshotUrl, onInteract }
     try {
       const res = await onInteract(payload);
       if (res && res.frame_data) {
+        if (imageRef.current) {
+          imageRef.current.src = res.frame_data;
+        }
         setLiveFrame(res.frame_data);
       }
       return res;
@@ -350,6 +416,33 @@ export default function BrowserPreview({ currentUrl, screenshotUrl, onInteract }
           />
         </form>
 
+        {/* Real-time Status Badge */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
+          padding: '3px 10px',
+          borderRadius: '12px',
+          backgroundColor: statusBadge.bg,
+          border: `1px solid ${statusBadge.border}`,
+          fontSize: '0.72rem',
+          fontWeight: '500',
+          color: statusBadge.color,
+          whiteSpace: 'nowrap',
+          userSelect: 'none'
+        }}>
+          <span style={{
+            width: 7,
+            height: 7,
+            borderRadius: '50%',
+            backgroundColor: statusBadge.color,
+            boxShadow: `0 0 6px ${statusBadge.color}`,
+            display: 'inline-block',
+            animation: statusBadge.pulse ? 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite' : 'none'
+          }} />
+          <span>{statusBadge.text}</span>
+        </div>
+
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#5f6368' }}>
           <ShieldCheck size={16} color="#0f9d58" title="Playwright Guard Active" />
         </div>
@@ -419,6 +512,27 @@ export default function BrowserPreview({ currentUrl, screenshotUrl, onInteract }
                 }}
               />
             )}
+            {/* Live Compositor Stream Telemetry Banner */}
+            <div style={{
+              position: 'absolute',
+              bottom: '10px',
+              right: '12px',
+              zIndex: 10,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '3px 8px',
+              borderRadius: '6px',
+              backgroundColor: 'rgba(15, 23, 42, 0.75)',
+              backdropFilter: 'blur(4px)',
+              fontSize: '0.68rem',
+              color: '#e2e8f0',
+              pointerEvents: 'none',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+            }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: '#22c55e' }} />
+              <span>Direct Chrome Stream Active</span>
+            </div>
           </>
         ) : (
           <div style={{ color: '#64748b', textAlign: 'center', padding: '3.5rem' }}>

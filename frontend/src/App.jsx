@@ -262,8 +262,9 @@ export default function App() {
 
     if (event_type === 'BROWSER_FRAME') {
       if (data?.frame_data) {
+        window.dispatchEvent(new CustomEvent('awa:live_browser_frame', { detail: data.frame_data }));
         const now = Date.now();
-        if (now - lastFrameTimeRef.current >= 45) {
+        if (!screenshotUrl || now - lastFrameTimeRef.current >= 1500) {
           lastFrameTimeRef.current = now;
           setScreenshotUrl(data.frame_data);
         }
@@ -287,10 +288,11 @@ export default function App() {
     } else if (event_type === 'BROWSER_OBSERVED') {
       if (data.url) setCurrentUrl(data.url);
       if (data.frame_data) {
+        window.dispatchEvent(new CustomEvent('awa:live_browser_frame', { detail: data.frame_data }));
         setScreenshotUrl(data.frame_data);
       } else if (data.screenshot_path) {
         const filename = data.screenshot_path.split(/[\\/]/).pop();
-        setScreenshotUrl(`/api/tasks/${currentId}/screenshot/${filename}?t=${Date.now()}`);
+        setScreenshotUrl((prev) => (prev && prev.startsWith('data:') ? prev : `/api/tasks/${currentId}/screenshot/${filename}?t=${Date.now()}`));
       }
     } else if (event_type === 'ACTION_PLANNED') {
       setEvents((prev) => [
@@ -1057,7 +1059,13 @@ export default function App() {
         }}>
 
           {/* Browser Preview Frame */}
-          <BrowserPreview currentUrl={currentUrl} screenshotUrl={screenshotUrl} onInteract={handleBrowserInteract} />
+          <BrowserPreview
+            currentUrl={currentUrl}
+            screenshotUrl={screenshotUrl}
+            onInteract={handleBrowserInteract}
+            taskStatus={taskState?.status}
+            pendingIntervention={pendingIntervention}
+          />
 
         </aside>
       </main>

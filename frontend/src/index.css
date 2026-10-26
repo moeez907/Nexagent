@@ -578,6 +578,19 @@ body {
   animation: slideInComposer 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
+@keyframes ping {
+  75%, 100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
+@keyframes pulse {
+  50% {
+    opacity: .5;
+  }
+}
+
 .welcome-mark {
   width: 48px;
   height: 48px;
