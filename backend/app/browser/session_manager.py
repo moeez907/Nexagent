@@ -251,52 +251,58 @@ class BrowserSessionManager:
             if sys.platform == "win32":
                 asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
             self._playwright = await async_playwright().start()
-            if settings.BROWSER_ELECTRON_CDP:
-                self._browser = await self._playwright.chromium.connect_over_cdp(settings.BROWSER_CDP_URL)
-                logger.info("Connected Playwright to the visible Electron browser over CDP.")
-            else:
-                launch_args = [
-                    "--disable-blink-features=AutomationControlled",
-                    "--no-sandbox",
-                    "--disable-setuid-sandbox",
-                    "--disable-dev-shm-usage",
-                    "--disable-infobars",
-                    "--no-first-run",
-                    "--no-service-autorun",
-                    "--lang=en-US,en",
-                ]
-                proxy_config = None
-                if settings.BROWSER_PROXY_SERVER:
-                    proxy_config = {"server": settings.BROWSER_PROXY_SERVER}
-                    if settings.BROWSER_PROXY_USERNAME:
-                        proxy_config["username"] = settings.BROWSER_PROXY_USERNAME
-                    if settings.BROWSER_PROXY_PASSWORD:
-                        proxy_config["password"] = settings.BROWSER_PROXY_PASSWORD
 
-                try:
-                    self._browser = await self._playwright.chromium.launch(
-                        channel="chrome",
-                        headless=settings.BROWSER_HEADLESS,
-                        slow_mo=settings.BROWSER_SLOW_MO_MS,
-                        proxy=proxy_config,
-                        args=launch_args,
-                        ignore_default_args=["--enable-automation"],
-                    )
-                except Exception as launch_err:
-                    err_msg = str(launch_err)
-                    logger.warning("Chrome channel launch encountered: %s. Attempting fallback launch...", err_msg)
-                    try:
-                        self._browser = await self._playwright.chromium.launch(
-                            headless=settings.BROWSER_HEADLESS,
-                            slow_mo=settings.BROWSER_SLOW_MO_MS,
-                            proxy=proxy_config,
-                            args=launch_args,
-                            ignore_default_args=["--enable-automation"],
-                        )
-                    except Exception:
-                        raise launch_err
-                logger.info("Launched clean Chromium host for task-isolated browser contexts.")
-            logger.info("Playwright Chromium browser initialized.")
+        if self._browser and self._browser.is_connected():
+            return
+
+        if settings.BROWSER_ELECTRON_CDP:
+            self._browser = await self._playwright.chromium.connect_over_cdp(settings.BROWSER_CDP_URL)
+            logger.info("Connected Playwright to the visible Electron browser over CDP.")
+        else:
+            launch_args = [
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-infobars",
+                "--no-first-run",
+                "--no-service-autorun",
+                "--lang=en-US,en",
+            ]
+            proxy_config = None
+            if settings.BROWSER_PROXY_SERVER:
+                proxy_config = {"server": settings.BROWSER_PROXY_SERVER}
+                if settings.BROWSER_PROXY_USERNAME:
+                    proxy_config["username"] = settings.BROWSER_PROXY_USERNAME
+                if settings.BROWSER_PROXY_PASSWORD:
+                    proxy_config["password"] = settings.BROWSER_PROXY_PASSWORD
+
+            self._browser = None
+            # 1. Attempt to launch local Chrome channel (Windows / desktop)
+            try:
+                self._browser = await self._playwright.chromium.launch(
+                    channel="chrome",
+                    headless=settings.BROWSER_HEADLESS,
+                    slow_mo=settings.BROWSER_SLOW_MO_MS,
+                    proxy=proxy_config,
+                    args=launch_args,
+                    ignore_default_args=["--enable-automation"],
+                )
+                logger.info("Launched local Chrome channel.")
+            except Exception as launch_err:
+                logger.info("Chrome channel not available (%s); launching bundled Chromium.", launch_err)
+
+            # 2. Fallback to standard Chromium (AWS, Docker, Linux, headless servers)
+            if self._browser is None:
+                self._browser = await self._playwright.chromium.launch(
+                    headless=settings.BROWSER_HEADLESS,
+                    slow_mo=settings.BROWSER_SLOW_MO_MS,
+                    proxy=proxy_config,
+                    args=launch_args,
+                    ignore_default_args=["--enable-automation"],
+                )
+                logger.info("Launched bundled Chromium host.")
+        logger.info("Playwright Chromium browser initialized.")
 
     @classmethod
     def get_default_seed_path(cls) -> str:

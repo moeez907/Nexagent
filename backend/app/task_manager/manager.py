@@ -578,6 +578,34 @@ class TaskManager:
             and any(marker in normalized_url for marker in ("signin", "challenge", "servicelogin", "accountchooser"))
         ) or "myaccount.google.com/verification" in normalized_url
 
+    async def _create_intervention(
+        self,
+        task_id: str,
+        intervention_type: HumanInterventionType,
+        prompt: str,
+        action_payload: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        record = human_controller.create_intervention_request(
+            task_id=task_id,
+            intervention_type=intervention_type,
+            prompt=prompt,
+            action_payload=action_payload,
+        )
+        try:
+            async with async_session_factory() as db:
+                db.add(HumanInterventionModel(
+                    id=record["id"],
+                    task_id=task_id,
+                    intervention_type=record["intervention_type"],
+                    status=record["status"],
+                    prompt=self._database_safe(prompt),
+                    action_payload=self._database_safe(action_payload),
+                ))
+                await db.commit()
+        except Exception as db_err:
+            logger.warning("Could not persist intervention record to DB: %s", db_err)
+        return record
+
     async def _wait_for_account_login(self, task_id: str, session) -> bool:
         """Give the user an interactive live browser window for manual account login."""
         await self._update_task_status(task_id, TaskStatus.WAITING_FOR_HUMAN)
@@ -957,8 +985,8 @@ class TaskManager:
         if not is_continued_session or session.page.url in ("about:blank", ""):
             logger.info("Opening Google (https://www.google.com) for task %s", task_id)
             try:
-                await session.page.goto("https://www.google.com", wait_until="domcontentloaded", timeout=30000)
-                await asyncio.sleep(1.0)
+                await session.page.goto("https://www.google.com", wait_until="domcontentloaded", timeout=20000)
+                await asyncio.sleep(0.5)
             except Exception as nav_err:
                 logger.warning("Error navigating to Google: %s", nav_err)
 
@@ -975,28 +1003,24 @@ class TaskManager:
                 logger.debug("Initial screenshot broadcast warning: %s", err)
 
         # 2. Check if user Google Account is already logged in
-        is_google_logged_in = await self._google_account_is_authenticated(session)
-        if is_google_logged_in:
-            logger.info("Google Account is already logged in in live browser session for task %s. Proceeding with task.", task_id)
-        else:
-            logger.info("Google Account is NOT logged in for task %s. User must log in before proceeding.", task_id)
+        if settings.BROWSER_REQUIRE_LOGIN_BEFORE_TASK and not is_continued_session:
             try:
-                if not self._is_google_authentication_page(session.page.url):
-                    await session.page.goto("https://accounts.google.com/", wait_until="domcontentloaded", timeout=30000)
-            except Exception as nav_err:
-                logger.warning("Error opening Google Sign In: %s", nav_err)
+                is_google_logged_in = await self._google_account_is_authenticated(session)
+                if is_google_logged_in:
+                    logger.info("Google Account is already logged in for task %s. Proceeding with task.", task_id)
+                else:
+                    logger.info("Google Account is NOT logged in for task %s. User must log in before proceeding.", task_id)
+                    try:
+                        if not self._is_google_authentication_page(session.page.url):
+                            await session.page.goto("https://accounts.google.com/", wait_until="domcontentloaded", timeout=20000)
+                    except Exception as nav_err:
+                        logger.warning("Error opening Google Sign In: %s", nav_err)
 
-            login_ok = await self._wait_for_account_login(task_id, session)
-            if not login_ok:
-                await self._finish_task_failure(
-                    task_id,
-                    goal,
-                    "Google account login was not completed. Task aborted.",
-                    start_time,
-                    visited_urls,
-                    start_step,
-                )
-                return
+                    login_ok = await self._wait_for_account_login(task_id, session)
+                    if not login_ok:
+                        logger.warning("Google account login was not completed for task %s. Continuing with task.", task_id)
+            except Exception as auth_err:
+                logger.warning("Google account check encountered: %s. Continuing with task.", auth_err)
 
         # 3. Post-login destination routing:
         # If user provided an explicit URL in goal, navigate to it.
