@@ -286,8 +286,9 @@ export default function App() {
       loadHistory();
     } else if (event_type === 'BROWSER_OBSERVED') {
       if (data.url) setCurrentUrl(data.url);
-      if (data.screenshot_path) {
-        // Bust browser cache by appending timestamp
+      if (data.frame_data) {
+        setScreenshotUrl(data.frame_data);
+      } else if (data.screenshot_path) {
         const filename = data.screenshot_path.split(/[\\/]/).pop();
         setScreenshotUrl(`/api/tasks/${currentId}/screenshot/${filename}?t=${Date.now()}`);
       }

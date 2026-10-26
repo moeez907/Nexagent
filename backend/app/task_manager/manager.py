@@ -1102,12 +1102,18 @@ class TaskManager:
 
                 # Capture preview screenshot
                 screenshot_path = await session.capture_screenshot(f"step_{step}.png")
+                frame_data_snap = None
+                try:
+                    frame_data_snap = await session.capture_base64_frame()
+                except Exception:
+                    pass
 
                 await self._broadcast(task_id, "BROWSER_OBSERVED", {
                     "step": step,
                     "url": current_url,
                     "title": browser_state.get("title"),
                     "screenshot_path": screenshot_path,
+                    "frame_data": frame_data_snap,
                     "interactive_count": len(browser_state.get("interactive_elements", []))
                 })
 
@@ -1602,12 +1608,19 @@ class TaskManager:
                     return
                 self._require_semantic_observation(post_browser_state)
                 post_action_screenshot_path = await session.capture_screenshot(f"step_{step}_after.png")
+                post_frame_snap = None
+                try:
+                    post_frame_snap = await session.capture_base64_frame()
+                except Exception:
+                    pass
+
                 await self._broadcast(task_id, "BROWSER_OBSERVED", {
                     "step": step,
                     "phase": "post_action",
                     "url": post_browser_state.get("url", ""),
                     "title": post_browser_state.get("title"),
                     "screenshot_path": post_action_screenshot_path,
+                    "frame_data": post_frame_snap,
                     "interactive_count": len(post_browser_state.get("interactive_elements", []))
                 })
                 state_diff = diff_states(browser_state, post_browser_state)
