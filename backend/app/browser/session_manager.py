@@ -256,19 +256,14 @@ class BrowserSessionManager:
                 logger.info("Connected Playwright to the visible Electron browser over CDP.")
             else:
                 launch_args = [
+                    "--disable-blink-features=AutomationControlled",
                     "--no-sandbox",
                     "--disable-setuid-sandbox",
                     "--disable-dev-shm-usage",
-                    "--disable-blink-features=AutomationControlled",
-                    "--disable-features=IsolateOrigins,site-per-process",
                     "--disable-infobars",
-                    "--ignore-certificate-errors",
                     "--no-first-run",
                     "--no-service-autorun",
-                    "--password-store=basic",
                     "--lang=en-US,en",
-                    "--disable-http2",
-                    "--disable-quic",
                 ]
                 proxy_config = None
                 if settings.BROWSER_PROXY_SERVER:
@@ -359,147 +354,19 @@ class BrowserSessionManager:
 
             context = await source_browser.new_context(
                 viewport={"width": 1280, "height": 800},
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
                 locale="en-US",
                 timezone_id="America/New_York",
                 accept_downloads=True,
                 storage_state=storage_state,
                 proxy=proxy_config,
-                extra_http_headers={
-                    "Accept-Language": "en-US,en;q=0.9",
-                    "Sec-Ch-Ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
-                    "Sec-Ch-Ua-Mobile": "?0",
-                    "Sec-Ch-Ua-Platform": '"Windows"',
-                }
             )
-            # Comprehensive anti-bot stealth script (hides Playwright / automation signals)
+            # Clean up internal automation props without tampering with native prototypes
             await context.add_init_script("""
-                // 1. Naturally mask webdriver on Navigator prototype
-                try {
-                    const proto = Object.getPrototypeOf(navigator);
-                    delete proto.webdriver;
-                    Object.defineProperty(proto, 'webdriver', {
-                        get: () => undefined,
-                        enumerable: false,
-                        configurable: true
-                    });
-                } catch (e) {}
-                try {
-                    delete navigator.webdriver;
-                } catch (e) {}
-
-                // 2. Realistic window metrics (crucial for Alibaba/Daraz SecGuard which flags outerWidth == 0)
                 try {
                     Object.defineProperty(window, 'outerWidth', { get: () => window.innerWidth });
                     Object.defineProperty(window, 'outerHeight', { get: () => window.innerHeight + 85 });
                 } catch (e) {}
 
-                // 3. UserAgentData emulation matching Chrome 124
-                try {
-                    Object.defineProperty(navigator, 'userAgentData', {
-                        get: () => ({
-                            brands: [
-                                { brand: 'Chromium', version: '124' },
-                                { brand: 'Google Chrome', version: '124' },
-                                { brand: 'Not-A.Brand', version: '99' }
-                            ],
-                            mobile: false,
-                            platform: 'Windows',
-                            getHighEntropyValues: async () => ({
-                                architecture: 'x86',
-                                bitness: '64',
-                                model: '',
-                                platform: 'Windows',
-                                platformVersion: '15.0.0',
-                                uaFullVersion: '124.0.0.0'
-                            })
-                        })
-                    });
-                } catch (e) {}
-
-                // 4. Realistic Network Information
-                try {
-                    if (!navigator.connection) {
-                        Object.defineProperty(navigator, 'connection', {
-                            get: () => ({
-                                effectiveType: '4g',
-                                rtt: 50,
-                                downlink: 10,
-                                saveData: false
-                            })
-                        });
-                    }
-                } catch (e) {}
-
-                // 5. Mock realistic hardware & memory specs
-                Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
-                Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
-                Object.defineProperty(navigator, 'maxTouchPoints', { get: () => 0 });
-
-                // 6. Spoof WebGL vendor and unmasked renderer (avoids SwiftShader / llvmpipe headless detection)
-                try {
-                    const getParameter = WebGLRenderingContext.prototype.getParameter;
-                    WebGLRenderingContext.prototype.getParameter = function(parameter) {
-                        if (parameter === 37445) return 'Intel Inc.';
-                        if (parameter === 37446) return 'Intel(R) Iris(R) Xe Graphics';
-                        return getParameter.apply(this, arguments);
-                    };
-                    if (typeof WebGL2RenderingContext !== 'undefined') {
-                        const getParameter2 = WebGL2RenderingContext.prototype.getParameter;
-                        WebGL2RenderingContext.prototype.getParameter = function(parameter) {
-                            if (parameter === 37445) return 'Intel Inc.';
-                            if (parameter === 37446) return 'Intel(R) Iris(R) Xe Graphics';
-                            return getParameter2.apply(this, arguments);
-                        };
-                    }
-                } catch (e) {}
-
-                // 7. Mock chrome runtime and app objects
-                window.chrome = {
-                    app: {
-                        isInstalled: false,
-                        InstallState: { DISABLED: 'DISABLED', INSTALLED: 'INSTALLED', NOT_INSTALLED: 'NOT_INSTALLED' },
-                        RunningState: { CANNOT_RUN: 'CANNOT_RUN', READY_TO_RUN: 'READY_TO_RUN', RUNNING: 'RUNNING' }
-                    },
-                    runtime: {
-                        OnInstalledReason: { CHROME_UPDATE: 'chrome_update', INSTALL: 'install', SHARED_MODULE_UPDATE: 'shared_module_update', UPDATE: 'update' },
-                        OnRestartRequiredReason: { APP_UPDATE: 'app_update', OS_UPDATE: 'os_update', PERIODIC: 'periodic' },
-                        PlatformArch: { ARM: 'arm', ARM64: 'arm64', MIPS: 'mips', MIPS64: 'mips64', X86_32: 'x86-32', X86_64: 'x86-64' },
-                        PlatformNaclArch: { ARM: 'arm', MIPS: 'mips', MIPS64: 'mips64', X86_32: 'x86-32', X86_64: 'x86-64' },
-                        PlatformOs: { ANDROID: 'android', CROS: 'cros', LINUX: 'linux', MAC: 'mac', OPENBSD: 'openbsd', WIN: 'win' },
-                        RequestUpdateCheckStatus: { NO_UPDATE: 'no_update', THROTTLED: 'throttled', UPDATE_AVAILABLE: 'update_available' }
-                    },
-                    loadTimes: function() {},
-                    csi: function() {}
-                };
-
-                // 8. Mock realistic languages and plugins
-                Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
-                Object.defineProperty(navigator, 'plugins', {
-                    get: () => {
-                        const pluginList = [
-                            { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
-                            { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai', description: '' },
-                            { name: 'Native Client', filename: 'internal-nacl-plugin', description: '' }
-                        ];
-                        pluginList.item = (i) => pluginList[i];
-                        pluginList.namedItem = (name) => pluginList.find(p => p.name === name);
-                        pluginList.refresh = () => {};
-                        return pluginList;
-                    }
-                });
-
-                // 9. Emulate permissions query
-                const originalQuery = window.navigator.permissions ? window.navigator.permissions.query : null;
-                if (originalQuery) {
-                    window.navigator.permissions.query = (parameters) => (
-                        parameters.name === 'notifications' ?
-                            Promise.resolve({ state: Notification.permission }) :
-                            originalQuery(parameters)
-                    );
-                }
-
-                // 10. Strip out any automation-specific injected variables
                 try {
                     for (const prop of Object.getOwnPropertyNames(window)) {
                         if (prop.startsWith('cdc_') || prop.startsWith('__playwright')) {
