@@ -139,6 +139,8 @@ async def close_guest_session(response: Response, guest_id: str | None = Cookie(
             tasks_res = await db.execute(select(TaskModel).where(TaskModel.guest_id == guest_id))
             tasks = tasks_res.scalars().all()
             for t in tasks:
+                if t.id in task_manager.active_tasks:
+                    continue
                 try:
                     await session_manager.close_session(t.id)
                 except Exception:

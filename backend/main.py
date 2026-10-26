@@ -171,9 +171,9 @@ async def task_websocket_endpoint(websocket: WebSocket, task_id: str):
                             if payload.get("url"):
                                 await session.navigate_to(payload["url"])
 
-                        # Broadcast updated live frame to frontend immediately after click/key/navigation
-                        if action in ("click", "mouseup", "double_click", "press", "type", "reload", "navigate"):
-                            await asyncio.sleep(0.1)
+                        # Broadcast updated live frame to frontend immediately after click/key/navigation/scroll
+                        if action in ("click", "mouseup", "double_click", "press", "type", "reload", "navigate", "scroll"):
+                            await asyncio.sleep(0.04)
                             frame_data = await session.capture_base64_frame()
                             curr_url = session.current_url
                             if frame_data:

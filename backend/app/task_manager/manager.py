@@ -870,12 +870,7 @@ class TaskManager:
                     exc,
                 )
                 if attempt < 3:
-                    try:
-                        await engine.dispose()
-                        await asyncio.wait_for(init_db(), timeout=20)
-                    except Exception as recovery_error:
-                        logger.warning("Database recovery attempt failed: %s", recovery_error)
-                    await asyncio.sleep(1)
+                    await asyncio.sleep(0.5 * attempt)
 
         if not database_updated:
             logger.error("Could not persist status for task %s after 3 attempts; continuing task loop.", task_id)

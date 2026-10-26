@@ -77,6 +77,7 @@ export default function App() {
   const humanResponseSubmittingRef = useRef(false);
   const liveInterventionRef = useRef(false);
   const interventionTimestampRef = useRef('');
+  const lastFrameTimeRef = useRef(0);
   const messagesEndRef = useRef(null);
   const scrollContainerRef = useRef(null);
   const isAtBottomRef = useRef(true);
@@ -260,7 +261,13 @@ export default function App() {
     const { event_type, data } = message;
 
     if (event_type === 'BROWSER_FRAME') {
-      if (data?.frame_data) setScreenshotUrl(data.frame_data);
+      if (data?.frame_data) {
+        const now = Date.now();
+        if (now - lastFrameTimeRef.current >= 45) {
+          lastFrameTimeRef.current = now;
+          setScreenshotUrl(data.frame_data);
+        }
+      }
     } else if (event_type === 'EVENT_REPLAY') {
       const replayEvents = data?.events || [];
       replayEvents.forEach((replayedMessage) => handleWebSocketMessage(replayedMessage));
@@ -380,16 +387,22 @@ export default function App() {
       .then((currUser) => {
         setUser(currUser);
         if (!currUser) {
-          setViewMode('home');
           try {
-            localStorage.removeItem('nexagent_view_mode');
-            localStorage.removeItem('nexagent_active_task_id');
+            const savedActiveTask = localStorage.getItem('nexagent_active_task_id');
+            if (!savedActiveTask) {
+              setViewMode('home');
+            }
           } catch {}
         }
       })
       .catch(() => {
         setUser(null);
-        setViewMode('home');
+        try {
+          const savedActiveTask = localStorage.getItem('nexagent_active_task_id');
+          if (!savedActiveTask) {
+            setViewMode('home');
+          }
+        } catch {}
       });
   }, []);
 
@@ -403,7 +416,7 @@ export default function App() {
       resetWorkspace();
     }
 
-    if (user && (user.guest || user.email)) {
+    if (user !== undefined) {
       let isCurrentAccount = true;
       loadHistory(() => isCurrentAccount);
       return () => {
@@ -412,13 +425,6 @@ export default function App() {
     }
     return undefined;
   }, [user?.id, user?.email]);
-
-  useEffect(() => {
-    if (!user?.guest) return undefined;
-    const closeGuestSession = () => navigator.sendBeacon('/api/auth/guest/close', '');
-    window.addEventListener('beforeunload', closeGuestSession);
-    return () => window.removeEventListener('beforeunload', closeGuestSession);
-  }, [user]);
 
   // Connect WebSocket when activeTaskId changes
   useEffect(() => {

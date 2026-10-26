@@ -28,8 +28,17 @@ class BrowserSession:
         self.created_at = os.path.getctime(session_dir) if os.path.exists(session_dir) else 0.0
         self._cdp_session = None
         self._stream_callback: Optional[Callable[[str], Awaitable[None]]] = None
+        self._frame_busy = False
+        self._last_frame_time = 0.0
         self.seed_path = seed_path
         self.has_proxy = has_proxy
+
+    @property
+    def current_url(self) -> str:
+        try:
+            return self.page.url if (self.page and not self.page.is_closed()) else ""
+        except Exception:
+            return ""
 
     async def persist_storage_state(self, path: Optional[str] = None):
         target_path = path or self.seed_path
@@ -45,7 +54,7 @@ class BrowserSession:
             logger.warning("Could not persist browser storage state to %s: %s", target_path, err)
 
     async def start_live_stream(self, callback: Callable[[str], Awaitable[None]]):
-        """Stream the actual browser page through CDP without screenshot polling."""
+        """Stream the actual browser page through CDP with backpressure and adaptive frame rate."""
         self._stream_callback = callback
         if self._cdp_session:
             return
@@ -55,25 +64,44 @@ class BrowserSession:
             logger.warning("Could not establish CDP session for live stream: %s", err)
             return
 
+        import time
+
         async def handle_frame(event):
             try:
-                await self._cdp_session.send("Page.screencastFrameAck", {"sessionId": event["sessionId"]})
+                session_id = event.get("sessionId")
+                if self._cdp_session and session_id is not None:
+                    try:
+                        await self._cdp_session.send("Page.screencastFrameAck", {"sessionId": session_id})
+                    except Exception:
+                        pass
+
+                now = time.time()
+                # Rate-limit to max ~15 fps (min 65ms between frames) and drop if previous frame is still broadcasting
+                if self._frame_busy or (now - self._last_frame_time < 0.065):
+                    return
+
                 if self._stream_callback:
-                    frame_uri = f"data:image/jpeg;base64,{event['data']}"
-                    res = self._stream_callback(frame_uri)
-                    if asyncio.iscoroutine(res):
-                        await res
+                    self._frame_busy = True
+                    self._last_frame_time = now
+                    try:
+                        frame_uri = f"data:image/jpeg;base64,{event['data']}"
+                        res = self._stream_callback(frame_uri)
+                        if asyncio.iscoroutine(res):
+                            await res
+                    finally:
+                        self._frame_busy = False
             except Exception as error:
+                self._frame_busy = False
                 logger.debug("Live browser frame error: %s", error)
 
         self._cdp_session.on("Page.screencastFrame", lambda event: asyncio.create_task(handle_frame(event)))
         try:
             await self._cdp_session.send("Page.startScreencast", {
                 "format": "jpeg",
-                "quality": 60,
-                "maxWidth": 1280,
-                "maxHeight": 800,
-                "everyNthFrame": 1,
+                "quality": 50,
+                "maxWidth": 1024,
+                "maxHeight": 640,
+                "everyNthFrame": 2,
             })
             logger.info("CDP Screencast started successfully for session %s.", self.session_id)
         except Exception as err:
@@ -89,6 +117,7 @@ class BrowserSession:
             pass
         self._cdp_session = None
         self._stream_callback = None
+        self._frame_busy = False
 
     def set_stream_callback(self, callback: Callable[[str], Awaitable[None]]):
         self._stream_callback = callback
