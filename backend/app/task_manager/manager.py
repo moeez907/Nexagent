@@ -73,31 +73,6 @@ class TaskManager:
             return tuple(TaskManager._database_safe(item) for item in value)
         return value
 
-    async def _create_intervention(
-        self,
-        task_id: str,
-        intervention_type: HumanInterventionType,
-        prompt: str,
-        action_payload: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
-        record = human_controller.create_intervention_request(
-            task_id=task_id,
-            intervention_type=intervention_type,
-            prompt=prompt,
-            action_payload=action_payload,
-        )
-        async with async_session_factory() as db:
-            db.add(HumanInterventionModel(
-                id=record["id"],
-                task_id=task_id,
-                intervention_type=record["intervention_type"],
-                status=record["status"],
-                prompt=self._database_safe(prompt),
-                action_payload=self._database_safe(action_payload),
-            ))
-            await db.commit()
-        return record
-
     @staticmethod
     def _editable_form_fields(state: Dict[str, Any]) -> List[Dict[str, Any]]:
         elements = state.get("interactive_elements", [])
@@ -544,7 +519,7 @@ class TaskManager:
                     consent_btn = session.page.locator(
                         'button:has-text("Accept all"), button:has-text("I agree"), button:has-text("Reject all"), div[role="dialog"] button:has-text("Accept")'
                     ).first
-                    if await consent_btn.is_visible(timeout=1000):
+                    if await consent_btn.count() > 0 and await consent_btn.is_visible():
                         await consent_btn.click()
                         await asyncio.sleep(0.5)
                 except Exception:
@@ -608,7 +583,7 @@ class TaskManager:
 
     async def _wait_for_account_login(self, task_id: str, session) -> bool:
         """Give the user an interactive live browser window for manual account login."""
-        await self._update_task_status(task_id, TaskStatus.WAITING_FOR_HUMAN)
+        await self._update_task_status(task_id, TaskStatus.WAITING_FOR_HUMAN, current_url=session.page.url)
         prompt = "Please sign in to your Google Account in the Live Browser preview on the right. Once signed in, click Continue to proceed with your task."
         await self._create_intervention(
             task_id=task_id,
@@ -617,8 +592,11 @@ class TaskManager:
             action_payload={"url": session.page.url}
         )
 
-        # Capture screenshot of Google login page so it immediately shows in the Live Browser preview
+        # Capture screenshot and base64 live frame of Google login page so it immediately shows in preview
         try:
+            frame_data = await session.capture_base64_frame()
+            if frame_data:
+                await self._broadcast(task_id, "BROWSER_FRAME", {"frame_data": frame_data}, persist=False)
             screenshot_path = await session.capture_screenshot("google_login.png")
             await self._broadcast(task_id, "BROWSER_OBSERVED", {
                 "step": 0,
@@ -662,6 +640,9 @@ class TaskManager:
                     action_payload={"url": session.page.url}
                 )
                 try:
+                    retry_frame = await session.capture_base64_frame()
+                    if retry_frame:
+                        await self._broadcast(task_id, "BROWSER_FRAME", {"frame_data": retry_frame}, persist=False)
                     screenshot_path = await session.capture_screenshot("google_login_retry.png")
                     await self._broadcast(task_id, "BROWSER_OBSERVED", {
                         "step": 0,
@@ -985,13 +966,19 @@ class TaskManager:
         if not is_continued_session or session.page.url in ("about:blank", ""):
             logger.info("Opening Google (https://www.google.com) for task %s", task_id)
             try:
-                await session.page.goto("https://www.google.com", wait_until="domcontentloaded", timeout=20000)
+                await session.page.goto("https://www.google.com", wait_until="domcontentloaded", timeout=25000)
                 await asyncio.sleep(0.5)
             except Exception as nav_err:
                 logger.warning("Error navigating to Google: %s", nav_err)
 
-            # Broadcast frame so Live Browser in UI immediately shows Google
+            # Update DB current_url so REST API and frontend immediately reflect Google
+            await self._update_task_status(task_id, TaskStatus.PLANNING, current_url=session.page.url)
+
+            # Broadcast base64 live frame and screenshot so Live Browser preview immediately shows Google
             try:
+                frame_data = await session.capture_base64_frame()
+                if frame_data:
+                    await self._broadcast(task_id, "BROWSER_FRAME", {"frame_data": frame_data}, persist=False)
                 screenshot_path = await session.capture_screenshot("initial_google.jpg")
                 await self._broadcast(task_id, "BROWSER_OBSERVED", {
                     "step": 0,

@@ -461,11 +461,19 @@ async def get_task_details(task_id: str, db: AsyncSession = Depends(get_db_sessi
             "upload_mode": action_payload.get("upload_mode") or "file",
         }
 
+    active_session = session_manager.get_session(task_id)
+    resolved_url = task.current_url
+    if not resolved_url and active_session and active_session.page and not active_session.page.is_closed():
+        try:
+            resolved_url = active_session.page.url
+        except Exception:
+            pass
+
     return {
         "id": task.id,
         "goal": task.goal,
         "status": task.status,
-        "current_url": task.current_url,
+        "current_url": resolved_url,
         "created_at": task.created_at.isoformat() if task.created_at else None,
         "completed_at": task.completed_at.isoformat() if task.completed_at else None,
         "events": [

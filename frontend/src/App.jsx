@@ -174,7 +174,9 @@ export default function App() {
         goal: details.goal,
         status: details.status
       });
-      setCurrentUrl(details.current_url || '');
+      if (details.current_url) {
+        setCurrentUrl(details.current_url);
+      }
       setEvents(details.events || []);
       if (details.events && details.events.length > 0) {
         const screenshotEvents = details.events.filter((e) => e.screenshot_path);
@@ -183,6 +185,17 @@ export default function App() {
           const filename = lastScreenshot.screenshot_path.split(/[\\/]/).pop();
           setScreenshotUrl((prev) => (prev && prev.startsWith('data:') ? prev : `/api/tasks/${taskId}/screenshot/${filename}?t=${Date.now()}`));
         }
+      } else {
+        // If there are no completed step events yet, fetch the active browser live frame
+        fetch(`/api/tasks/${taskId}/live_frame`)
+          .then((r) => (r.ok ? r.json() : null))
+          .then((frame) => {
+            if (frame && activeTaskRef.current === taskId) {
+              if (frame.frame_data) setScreenshotUrl((prev) => prev || frame.frame_data);
+              if (frame.url) setCurrentUrl((prev) => prev || frame.url);
+            }
+          })
+          .catch(() => {});
       }
       // Do not let the initial request race overwrite a live completion event.
       if (details.result) {
