@@ -53,8 +53,21 @@ class BrowserSession:
         except Exception as err:
             logger.warning("Could not persist browser storage state to %s: %s", target_path, err)
 
+    async def _safe_broadcast(self, frame_uri: str):
+        if not self._stream_callback or self._frame_busy:
+            return
+        self._frame_busy = True
+        try:
+            res = self._stream_callback(frame_uri)
+            if asyncio.iscoroutine(res):
+                await res
+        except Exception:
+            pass
+        finally:
+            self._frame_busy = False
+
     async def start_live_stream(self, callback: Callable[[str], Awaitable[None]]):
-        """Stream the actual browser page through CDP with backpressure and adaptive frame rate."""
+        """Stream the actual browser page through CDP with non-blocking async broadcasting."""
         self._stream_callback = callback
         if self._cdp_session:
             return
@@ -76,25 +89,37 @@ class BrowserSession:
                         pass
 
                 now = time.time()
-                # Rate-limit to max ~15 fps (min 65ms between frames) and drop if previous frame is still broadcasting
-                if self._frame_busy or (now - self._last_frame_time < 0.065):
+                # 50ms throttle (~20 fps) to balance fluidity with network throughput
+                if now - self._last_frame_time < 0.05:
                     return
 
-                if self._stream_callback:
-                    self._frame_busy = True
-                    self._last_frame_time = now
-                    try:
-                        frame_uri = f"data:image/jpeg;base64,{event['data']}"
-                        res = self._stream_callback(frame_uri)
-                        if asyncio.iscoroutine(res):
-                            await res
-                    finally:
-                        self._frame_busy = False
+                self._last_frame_time = now
+                frame_data = event.get("data")
+                if frame_data and self._stream_callback:
+                    frame_uri = f"data:image/jpeg;base64,{frame_data}"
+                    asyncio.create_task(self._safe_broadcast(frame_uri))
             except Exception as error:
-                self._frame_busy = False
                 logger.debug("Live browser frame error: %s", error)
 
         self._cdp_session.on("Page.screencastFrame", lambda event: asyncio.create_task(handle_frame(event)))
+
+        # Automatically re-arm CDP screencast if cross-origin navigation resets compositor
+        async def on_nav(frame):
+            if frame == self.page.main_frame:
+                try:
+                    if self._cdp_session:
+                        await self._cdp_session.send("Page.startScreencast", {
+                            "format": "jpeg",
+                            "quality": 55,
+                            "maxWidth": 1024,
+                            "maxHeight": 640,
+                            "everyNthFrame": 1,
+                        })
+                except Exception:
+                    pass
+
+        self.page.on("framenavigated", lambda f: asyncio.create_task(on_nav(f)))
+
         try:
             await self._cdp_session.send("Page.startScreencast", {
                 "format": "jpeg",
