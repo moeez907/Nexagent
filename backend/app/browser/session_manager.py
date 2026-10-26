@@ -262,6 +262,7 @@ class BrowserSessionManager:
         else:
             launch_args = [
                 "--disable-blink-features=AutomationControlled",
+                "--disable-features=IsolateOrigins,site-per-process",
                 "--no-sandbox",
                 "--disable-setuid-sandbox",
                 "--disable-dev-shm-usage",
@@ -269,6 +270,7 @@ class BrowserSessionManager:
                 "--no-first-run",
                 "--no-service-autorun",
                 "--lang=en-US,en",
+                "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
             ]
             proxy_config = None
             if settings.BROWSER_PROXY_SERVER:
@@ -362,12 +364,38 @@ class BrowserSessionManager:
                 viewport={"width": 1280, "height": 800},
                 locale="en-US",
                 timezone_id="America/New_York",
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
                 accept_downloads=True,
                 storage_state=storage_state,
                 proxy=proxy_config,
             )
-            # Clean up internal automation props without tampering with native prototypes
+            # Comprehensive stealth evasions to prevent Google / Cloudflare bot rejection
             await context.add_init_script("""
+                try {
+                    delete Object.getPrototypeOf(navigator).webdriver;
+                } catch(e) {}
+                try {
+                    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+                } catch(e) {}
+
+                if (!window.chrome) {
+                    window.chrome = {};
+                }
+                window.chrome.runtime = { connect: function() {}, sendMessage: function() {} };
+                window.chrome.app = { isInstalled: false };
+
+                try {
+                    Object.defineProperty(navigator, 'plugins', {
+                        get: () => [1, 2, 3, 4, 5]
+                    });
+                } catch(e) {}
+
+                try {
+                    Object.defineProperty(navigator, 'languages', {
+                        get: () => ['en-US', 'en']
+                    });
+                } catch(e) {}
+
                 try {
                     Object.defineProperty(window, 'outerWidth', { get: () => window.innerWidth });
                     Object.defineProperty(window, 'outerHeight', { get: () => window.innerHeight + 85 });
