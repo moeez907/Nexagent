@@ -553,6 +553,18 @@ class TaskManager:
             and any(marker in normalized_url for marker in ("signin", "challenge", "servicelogin", "accountchooser"))
         ) or "myaccount.google.com/verification" in normalized_url
 
+    async def _dismiss_google_consent(self, session) -> None:
+        """Dismiss Google cookie/consent dialog if visible."""
+        try:
+            consent_btn = session.page.locator(
+                'button:has-text("Accept all"), button:has-text("I agree"), button:has-text("Reject all"), div[role="dialog"] button:has-text("Accept")'
+            ).first
+            if await consent_btn.count() > 0 and await consent_btn.is_visible():
+                await consent_btn.click()
+                await asyncio.sleep(0.3)
+        except Exception:
+            pass
+
     async def _create_intervention(
         self,
         task_id: str,
@@ -623,20 +635,21 @@ class TaskManager:
         except Exception:
             pass
 
+        # Directly navigate to Google home page once sign-in is completed
+        try:
+            logger.info("Directly opening Google home page post-sign-in for task %s", task_id)
+            await session.page.goto("https://www.google.com", wait_until="domcontentloaded", timeout=15000)
+            await self._dismiss_google_consent(session)
+        except Exception as nav_err:
+            logger.warning("Navigation to google.com post-sign-in error: %s", nav_err)
+
         # Check and persist auth cookies if logged in
         if await self._google_account_is_authenticated(session):
             logger.info("Google Account login confirmed for task %s.", task_id)
-            try:
-                await session.persist_storage_state()
-            except Exception as e:
-                logger.warning("Could not persist storage state post-login: %s", e)
         else:
-            logger.info("User clicked Continue for task %s. Proceeding directly with user goal.", task_id)
+            logger.info("User clicked Continue for task %s. Proceeding with Google open.", task_id)
 
-        await self._update_task_status(task_id, TaskStatus.RUNNING, current_url=session.page.url)
-        return True
-
-        # Save cookies & storage state so Google login is remembered for all tasks!
+        # Save cookies & storage state so Google login is remembered for all future tasks!
         try:
             await session.persist_storage_state()
             default_seed = session_manager.get_default_seed_path()
@@ -644,9 +657,24 @@ class TaskManager:
                 await session.persist_storage_state(default_seed)
             logger.info("Successfully persisted Google login state for task %s.", task_id)
         except Exception as e:
-            logger.warning("Could not persist storage state after Google login: %s", e)
+            logger.warning("Could not persist storage state post-login: %s", e)
 
-        await self._update_task_status(task_id, TaskStatus.RUNNING)
+        # Immediately broadcast live frame and screenshot of Google homepage so live browser preview updates
+        try:
+            frame_data = await session.capture_base64_frame()
+            if frame_data:
+                await self._broadcast(task_id, "BROWSER_FRAME", {"frame_data": frame_data}, persist=False)
+            screenshot_path = await session.capture_screenshot("post_login_google.png")
+            await self._broadcast(task_id, "BROWSER_OBSERVED", {
+                "step": 0,
+                "url": session.page.url,
+                "title": await session.page.title(),
+                "screenshot_path": screenshot_path,
+            })
+        except Exception as err:
+            logger.debug("Post-login live frame broadcast warning: %s", err)
+
+        await self._update_task_status(task_id, TaskStatus.RUNNING, current_url=session.page.url)
         return True
 
     async def _broadcast(self, task_id: str, event_type: str, data: Dict[str, Any], persist: bool = True):
@@ -957,15 +985,7 @@ class TaskManager:
                         )
 
             # Dismiss Google consent dialog if shown (common on EU / AWS servers)
-            try:
-                consent_btn = session.page.locator(
-                    'button:has-text("Accept all"), button:has-text("I agree"), button:has-text("Reject all"), div[role="dialog"] button:has-text("Accept")'
-                ).first
-                if await consent_btn.count() > 0 and await consent_btn.is_visible():
-                    await consent_btn.click()
-                    await asyncio.sleep(0.3)
-            except Exception:
-                pass
+            await self._dismiss_google_consent(session)
 
             # Update DB current_url so REST API and frontend immediately reflect Google
             await self._update_task_status(task_id, TaskStatus.PLANNING, current_url=session.page.url)
@@ -1027,7 +1047,7 @@ class TaskManager:
                     await session.page.goto(target_url, wait_until="domcontentloaded", timeout=30000)
                 except Exception as nav_err:
                     logger.warning("User URL navigation error for task %s: %s", task_id, nav_err)
-        elif is_continued_session and session.page.url not in ("about:blank", "") and "accounts.google.com" not in session.page.url:
+        elif is_continued_session and session.page.url not in ("about:blank", "") and "accounts.google.com" not in session.page.url and "myaccount.google.com" not in session.page.url:
             logger.info("Task continuation active: keeping current page at %s without reloading default URL.", session.page.url)
         elif parent_context and parent_context.get("parent_url") and parent_context.get("parent_url") not in ("about:blank", ""):
             resume_url = parent_context.get("parent_url")
@@ -1038,10 +1058,11 @@ class TaskManager:
                 logger.warning("Resume URL navigation error for task %s: %s", task_id, nav_err)
         else:
             default_url = settings.BROWSER_DEFAULT_START_URL.strip() or "https://www.google.com"
-            if "accounts.google.com" in session.page.url or session.page.url in ("about:blank", ""):
+            if any(m in session.page.url for m in ("accounts.google.com", "myaccount.google.com", "about:blank")) or not session.page.url:
                 try:
                     logger.info("Returning to default entry URL post-auth: %s", default_url)
                     await session.page.goto(default_url, wait_until="domcontentloaded", timeout=30000)
+                    await self._dismiss_google_consent(session)
                 except Exception as nav_err:
                     logger.warning("Default URL navigation error for task %s: %s", task_id, nav_err)
 
