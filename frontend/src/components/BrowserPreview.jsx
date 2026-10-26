@@ -10,6 +10,7 @@ export default function BrowserPreview({ currentUrl, screenshotUrl, onInteract }
   const [lastClick, setLastClick] = useState(null);
   const [isSending, setIsSending] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [hasImageError, setHasImageError] = useState(false);
 
   const containerRef = useRef(null);
   const imageRef = useRef(null);
@@ -33,7 +34,8 @@ export default function BrowserPreview({ currentUrl, screenshotUrl, onInteract }
     if (screenshotUrl) {
       setLiveFrame(null);
     }
-  }, [screenshotUrl]);
+    setHasImageError(false);
+  }, [screenshotUrl, liveFrame]);
 
   // Extract clean domain name for Chrome tab title
   const getTabTitle = () => {
@@ -381,18 +383,18 @@ export default function BrowserPreview({ currentUrl, screenshotUrl, onInteract }
             onDidNavigate={(event) => setNavUrl(event.url)}
             onDidNavigateInPage={(event) => setNavUrl(event.url)}
           />
-        ) : activeSrc ? (
+        ) : (activeSrc && !hasImageError) ? (
           <>
             <img
               ref={imageRef}
               src={activeSrc}
-              alt="Real Embedded Google Chrome Session"
+              alt=""
               className="screenshot-img"
               draggable={false}
               onMouseDown={handleMouseDown}
               onDoubleClick={handleDoubleClick}
-              onError={(e) => {
-                console.warn('Screenshot load failed, retrying on next frame:', activeSrc);
+              onError={() => {
+                setHasImageError(true);
               }}
               style={{
                 width: '100%',
@@ -424,8 +426,14 @@ export default function BrowserPreview({ currentUrl, screenshotUrl, onInteract }
         ) : (
           <div style={{ color: '#64748b', textAlign: 'center', padding: '3.5rem' }}>
             <Monitor size={52} style={{ opacity: 0.3, marginBottom: '1rem', color: '#2563eb' }} />
-            <p style={{ fontWeight: '600', color: '#1e293b' }}>Google Chrome Browser Initializing...</p>
-            <p style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '0.4rem' }}>Live browser stream active. Ready for interaction.</p>
+            <p style={{ fontWeight: '600', color: '#1e293b' }}>
+              {hasImageError ? 'Reconnecting to Live Browser Stream...' : 'Google Chrome Browser Initializing...'}
+            </p>
+            <p style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '0.4rem' }}>
+              {hasImageError
+                ? 'Stream frame will appear as soon as the active page renders.'
+                : 'Live browser stream active. Ready for interaction.'}
+            </p>
           </div>
         )}
       </div>
