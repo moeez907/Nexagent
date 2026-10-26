@@ -588,7 +588,7 @@ export default function App() {
 
   const handleLogout = async () => {
     try {
-      if (user && !user.guest) await logout();
+      await logout();
     } catch (e) {
       console.error('Logout error:', e);
     } finally {
@@ -684,6 +684,7 @@ export default function App() {
     return (
       <HomePage
         user={user}
+        onLogout={handleLogout}
         onGetStarted={(goalOrEmail) => {
           // Do not navigate to the chat page without login
           if (!user || user.guest) {

@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db_session, TaskModel, TaskEventModel, TaskResultModel, HumanInterventionModel, BrowserSessionModel, UserModel, AuthSessionModel, ConversationModel, ConversationMessageModel
 from app.core.config import settings
-from app.auth.service import SESSION_COOKIE, create_session, get_optional_user, get_user_from_token, hash_password, verify_password
+from app.auth.service import SESSION_COOKIE, create_session, get_optional_user, get_user_from_token, hash_password, verify_password, hash_token
 from app.core.redis import redis_client
 from app.core.state_machine import TaskStatus, HumanInterventionType
 from app.task_manager.manager import task_manager
@@ -100,14 +100,26 @@ async def login(payload: AuthRequest, response: Response, db: AsyncSession = Dep
 
 @router.post("/auth/logout")
 async def logout(response: Response, token: str | None = Cookie(default=None, alias=SESSION_COOKIE), db: AsyncSession = Depends(get_db_session)):
-    user_session = None
-    if token:
-        result = await db.execute(select(AuthSessionModel).where(AuthSessionModel.token_hash == hashlib.sha256(token.encode()).hexdigest()))
-        user_session = result.scalar_one_or_none()
-    if user_session:
-        user_session.revoked_at = datetime.utcnow()
-        await db.commit()
-    response.delete_cookie(SESSION_COOKIE)
+    try:
+        if token:
+            token_h = hash_token(token)
+            result = await db.execute(select(AuthSessionModel).where(AuthSessionModel.token_hash == token_h))
+            user_session = result.scalar_one_or_none()
+            if user_session:
+                user_session.revoked_at = datetime.utcnow()
+                await db.commit()
+    except Exception as e:
+        logger.warning(f"Error revoking session on logout: {e}")
+        try:
+            await db.rollback()
+        except Exception:
+            pass
+
+    # Explicitly clear both session and guest cookies with matching HttpOnly and SameSite flags
+    response.delete_cookie(SESSION_COOKIE, path="/", httponly=True, samesite="lax")
+    response.set_cookie(SESSION_COOKIE, "", max_age=0, expires="Thu, 01 Jan 1970 00:00:00 GMT", path="/", httponly=True, samesite="lax")
+    response.delete_cookie("awa_guest", path="/", httponly=True, samesite="lax")
+    response.set_cookie("awa_guest", "", max_age=0, expires="Thu, 01 Jan 1970 00:00:00 GMT", path="/", httponly=True, samesite="lax")
     return {"status": "success"}
 
 

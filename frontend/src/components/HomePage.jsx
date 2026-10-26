@@ -24,7 +24,7 @@ import {
   Bot
 } from 'lucide-react';
 
-export default function HomePage({ onGetStarted, onSignIn, onSelectMission, user }) {
+export default function HomePage({ onGetStarted, onSignIn, onLogout, onSelectMission, user }) {
   const [copied, setCopied] = useState(false);
   const [activeTab, setActiveTab] = useState('json');
   const [ctaEmail, setCtaEmail] = useState('');
@@ -96,9 +96,16 @@ export default function HomePage({ onGetStarted, onSignIn, onSelectMission, user
 
           <div className="home-nav-actions">
             {user ? (
-              <button className="home-btn-workspace" onClick={() => onGetStarted()}>
-                Open Workspace <ArrowRight size={15} />
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <button className="home-btn-workspace" onClick={() => onGetStarted()}>
+                  Open Workspace <ArrowRight size={15} />
+                </button>
+                {onLogout && (
+                  <button className="home-btn-signin" onClick={onLogout} title="Sign out of current account">
+                    Sign Out
+                  </button>
+                )}
+              </div>
             ) : (
               <>
                 <button className="home-btn-signin" onClick={onSignIn}>
@@ -141,7 +148,7 @@ export default function HomePage({ onGetStarted, onSignIn, onSelectMission, user
           {/* CTA Group */}
           <div className="home-hero-cta-group">
             <button className="btn-primary-glow" onClick={() => onGetStarted()}>
-              Get Started <ArrowRight size={17} />
+              {user ? 'Open Workspace' : 'Get Started'} <ArrowRight size={17} />
             </button>
             <a
               href="#interactive-demo"
