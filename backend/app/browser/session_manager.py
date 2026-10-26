@@ -110,9 +110,9 @@ class BrowserSession:
                     if self._cdp_session:
                         await self._cdp_session.send("Page.startScreencast", {
                             "format": "jpeg",
-                            "quality": 55,
-                            "maxWidth": 1024,
-                            "maxHeight": 640,
+                            "quality": 80,
+                            "maxWidth": 1280,
+                            "maxHeight": 800,
                             "everyNthFrame": 1,
                         })
                 except Exception:
@@ -123,9 +123,9 @@ class BrowserSession:
         try:
             await self._cdp_session.send("Page.startScreencast", {
                 "format": "jpeg",
-                "quality": 55,
-                "maxWidth": 1024,
-                "maxHeight": 640,
+                "quality": 80,
+                "maxWidth": 1280,
+                "maxHeight": 800,
                 "everyNthFrame": 1,
             })
             logger.info("CDP Screencast started successfully for session %s.", self.session_id)
