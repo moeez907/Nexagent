@@ -58,7 +58,7 @@ export default function App() {
       if (viewMode) {
         localStorage.setItem('nexagent_view_mode', viewMode);
       }
-    } catch {}
+    } catch { }
   }, [viewMode]);
 
   // Sync activeTaskId to localStorage
@@ -69,7 +69,7 @@ export default function App() {
       } else {
         localStorage.removeItem('nexagent_active_task_id');
       }
-    } catch {}
+    } catch { }
   }, [activeTaskId]);
   const pendingMissionRef = useRef(null);
   const activeTaskRef = useRef(null);
@@ -196,7 +196,7 @@ export default function App() {
               if (frame.url) setCurrentUrl((prev) => prev || frame.url);
             }
           })
-          .catch(() => {});
+          .catch(() => { });
       }
       // Do not let the initial request race overwrite a live completion event.
       if (details.result) {
@@ -207,11 +207,14 @@ export default function App() {
         humanResponseSubmittingRef.current = false;
         setIsHumanResponseSubmitting(false);
         setPendingIntervention(null);
-      } else if (!details.pending_intervention && !liveInterventionRef.current) {
+      } else if (details.status === 'RUNNING' && humanResponseSubmittingRef.current) {
+        humanResponseSubmittingRef.current = false;
+        setIsHumanResponseSubmitting(false);
         setPendingIntervention(null);
+        liveInterventionRef.current = false;
       } else if (details.pending_intervention && !liveInterventionRef.current) {
         const createdAt = details.pending_intervention.created_at || '';
-        if (!interventionTimestampRef.current || createdAt > interventionTimestampRef.current) {
+        if (!interventionTimestampRef.current || createdAt >= interventionTimestampRef.current) {
           humanResponseSubmittingRef.current = false;
           setIsHumanResponseSubmitting(false);
           interventionTimestampRef.current = createdAt;
@@ -231,7 +234,7 @@ export default function App() {
         let currentActive = activeTaskId;
         try {
           if (!currentActive) currentActive = localStorage.getItem('nexagent_active_task_id');
-        } catch {}
+        } catch { }
         if (currentActive) {
           const session = tasks.find(
             (t) => t.id === currentActive || t.active_task_id === currentActive || (t.session_task_ids && t.session_task_ids.includes(currentActive))
@@ -392,7 +395,7 @@ export default function App() {
             if (!savedActiveTask) {
               setViewMode('home');
             }
-          } catch {}
+          } catch { }
         }
       })
       .catch(() => {
@@ -402,7 +405,7 @@ export default function App() {
           if (!savedActiveTask) {
             setViewMode('home');
           }
-        } catch {}
+        } catch { }
       });
   }, []);
 
@@ -575,7 +578,6 @@ export default function App() {
     // Immediately dismiss intervention box on reply/action
     setPendingIntervention(null);
     liveInterventionRef.current = false;
-    interventionTimestampRef.current = new Date().toISOString();
     try {
       await submitHumanResponse(activeTaskId, approved, responseData);
       humanResponseSubmittingRef.current = false;
@@ -599,7 +601,7 @@ export default function App() {
       try {
         localStorage.removeItem('nexagent_view_mode');
         localStorage.removeItem('nexagent_active_task_id');
-      } catch {}
+      } catch { }
     }
   };
 
@@ -645,7 +647,7 @@ export default function App() {
         setActiveTaskId(null);
         try {
           localStorage.removeItem('nexagent_active_task_id');
-        } catch {}
+        } catch { }
         setTaskState(null);
         setEvents([]);
         setResult(null);
@@ -772,7 +774,7 @@ export default function App() {
             setActiveTaskId(null);
             try {
               localStorage.removeItem('nexagent_active_task_id');
-            } catch {}
+            } catch { }
             setSessionTaskIds([]);
             setTaskState(null);
             setEvents([]);
@@ -975,8 +977,8 @@ export default function App() {
                           {displayIntervention.intervention_type === 'ACCOUNT_LOGIN_REQUIRED'
                             ? 'Google Account Sign-In Required'
                             : displayIntervention.intervention_type === 'CAPTCHA'
-                            ? 'Human Verification / CAPTCHA Detected'
-                            : 'Action needed from you'}
+                              ? 'Human Verification / CAPTCHA Detected'
+                              : 'Action needed from you'}
                         </strong>
                         <p style={{ marginTop: '0.3rem', marginBottom: '0.5rem', lineHeight: '1.45' }}>
                           {displayIntervention.prompt || 'Please complete the required browser verification.'}
