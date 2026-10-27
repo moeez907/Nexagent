@@ -168,15 +168,6 @@ export default function HomePage({ onGetStarted, onSignIn, onLogout, onSelectMis
               <span className="light light-yellow" />
               <span className="light light-green" />
             </div>
-
-            <div className="mockup-objective-bar">
-              <span className="objective-label">LIVE AUTONOMOUS DEMO</span>
-              <span className="objective-text">"NexAgent Multi-Step Autonomous Navigation, Perception &amp; Execution"</span>
-            </div>
-
-            <div className="mockup-toolbar-actions">
-              <span className="toolbar-tag">Auto-Looping Demo</span>
-            </div>
           </div>
 
           {/* Video Player Container */}
