@@ -207,14 +207,11 @@ export default function App() {
         humanResponseSubmittingRef.current = false;
         setIsHumanResponseSubmitting(false);
         setPendingIntervention(null);
-      } else if (details.status === 'RUNNING' && humanResponseSubmittingRef.current) {
-        humanResponseSubmittingRef.current = false;
-        setIsHumanResponseSubmitting(false);
+      } else if (!details.pending_intervention && !liveInterventionRef.current) {
         setPendingIntervention(null);
-        liveInterventionRef.current = false;
       } else if (details.pending_intervention && !liveInterventionRef.current) {
         const createdAt = details.pending_intervention.created_at || '';
-        if (!interventionTimestampRef.current || createdAt >= interventionTimestampRef.current) {
+        if (!interventionTimestampRef.current || createdAt > interventionTimestampRef.current) {
           humanResponseSubmittingRef.current = false;
           setIsHumanResponseSubmitting(false);
           interventionTimestampRef.current = createdAt;
@@ -578,6 +575,7 @@ export default function App() {
     // Immediately dismiss intervention box on reply/action
     setPendingIntervention(null);
     liveInterventionRef.current = false;
+    interventionTimestampRef.current = new Date().toISOString();
     try {
       await submitHumanResponse(activeTaskId, approved, responseData);
       humanResponseSubmittingRef.current = false;
