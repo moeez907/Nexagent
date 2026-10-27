@@ -251,7 +251,7 @@ export default function BrowserPreview({
         const delta = Math.round(wheelAccumulatorRef.current);
         wheelAccumulatorRef.current = 0;
         wheelTimerRef.current = null;
-        if (Math.abs(delta) > 5) {
+        if (Math.abs(delta) > 2) {
           executeInteraction({
             action: 'scroll',
             delta_y: delta,
@@ -259,7 +259,7 @@ export default function BrowserPreview({
             y_ratio: yRatio
           });
         }
-      }, 20);
+      }, 8);
     }
   };
 

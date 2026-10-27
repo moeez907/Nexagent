@@ -89,8 +89,8 @@ class BrowserSession:
                         pass
 
                 now = time.time()
-                # 50ms throttle (~20 fps) to balance fluidity with network throughput
-                if now - self._last_frame_time < 0.05:
+                # 30ms throttle (~33 fps) for ultra-fluid, instant frame delivery
+                if now - self._last_frame_time < 0.03:
                     return
 
                 self._last_frame_time = now
@@ -183,8 +183,7 @@ class BrowserSession:
         pixel_x = int(x_ratio * viewport["width"])
         pixel_y = int(y_ratio * viewport["height"])
         try:
-            await self.page.mouse.move(pixel_x, pixel_y)
-            await self.page.mouse.click(pixel_x, pixel_y, delay=80)
+            await self.page.mouse.click(pixel_x, pixel_y)
         except Exception as err:
             logger.warning("click_at_ratio failed at (%s, %s): %s", pixel_x, pixel_y, err)
 
@@ -220,7 +219,7 @@ class BrowserSession:
         Types string text into the currently focused element on the live page.
         """
         logger.info(f"User typed text into live canvas: '{text}'")
-        await self.page.keyboard.type(text, delay=50)
+        await self.page.keyboard.type(text)
 
     async def press_key(self, key: str):
         """
