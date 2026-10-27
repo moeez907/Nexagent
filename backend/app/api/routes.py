@@ -564,6 +564,13 @@ async def resume_human_intervention(
         stored_intervention.resolved_at = datetime.utcnow()
         await db.commit()
 
+    intervention_id = stored_intervention.id if stored_intervention else (pending.get("id") if pending else None)
+    await task_manager._broadcast(task_id, "INTERVENTION_RESOLVED", {
+        "task_id": task_id,
+        "approved": payload.approved,
+        "intervention_id": intervention_id
+    })
+
     return {"status": "success", "message": "Human intervention resolved. Resuming task execution."}
 
 
@@ -618,6 +625,14 @@ async def upload_intervention_file(
         stored_intervention.user_response = {"filenames": filenames, "filename": filenames[0]}
         stored_intervention.resolved_at = datetime.utcnow()
         await db.commit()
+
+    intervention_id = stored_intervention.id if stored_intervention else (pending.get("id") if pending else None)
+    await task_manager._broadcast(task_id, "INTERVENTION_RESOLVED", {
+        "task_id": task_id,
+        "approved": True,
+        "intervention_id": intervention_id
+    })
+
     return {"status": "success", "filenames": filenames, "message": "File uploaded. Resuming task execution."}
 
 

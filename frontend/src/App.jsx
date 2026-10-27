@@ -77,6 +77,7 @@ export default function App() {
   const humanResponseSubmittingRef = useRef(false);
   const liveInterventionRef = useRef(false);
   const interventionTimestampRef = useRef('');
+  const resolvedInterventionsRef = useRef(new Set());
   const lastFrameTimeRef = useRef(0);
   const messagesEndRef = useRef(null);
   const scrollContainerRef = useRef(null);
@@ -126,6 +127,7 @@ export default function App() {
     setPendingIntervention(null);
     liveInterventionRef.current = false;
     interventionTimestampRef.current = '';
+    resolvedInterventionsRef.current.clear();
     setHistoryTasks([]);
     setIsLoading(false);
     humanResponseSubmittingRef.current = false;
@@ -203,22 +205,28 @@ export default function App() {
         setResult(details.result);
       }
       const terminalStatus = ['COMPLETED', 'FAILED'].includes(details.status);
-      if (terminalStatus) {
-        humanResponseSubmittingRef.current = false;
-        setIsHumanResponseSubmitting(false);
-        setPendingIntervention(null);
-      } else if (details.status === 'RUNNING' && humanResponseSubmittingRef.current) {
+      if (terminalStatus || details.status === 'RUNNING') {
         humanResponseSubmittingRef.current = false;
         setIsHumanResponseSubmitting(false);
         setPendingIntervention(null);
         liveInterventionRef.current = false;
-      } else if (details.pending_intervention && !liveInterventionRef.current) {
-        const createdAt = details.pending_intervention.created_at || '';
-        if (!interventionTimestampRef.current || createdAt >= interventionTimestampRef.current) {
-          humanResponseSubmittingRef.current = false;
-          setIsHumanResponseSubmitting(false);
-          interventionTimestampRef.current = createdAt;
-          setPendingIntervention(details.pending_intervention || null);
+      } else if (!details.pending_intervention) {
+        if (!liveInterventionRef.current) {
+          setPendingIntervention(null);
+        }
+      } else {
+        const interventionId = details.pending_intervention.id;
+        const isResolved = interventionId && resolvedInterventionsRef.current.has(interventionId);
+        if (isResolved) {
+          setPendingIntervention(null);
+        } else if (!liveInterventionRef.current) {
+          const createdAt = details.pending_intervention.created_at || '';
+          if (!interventionTimestampRef.current || createdAt > interventionTimestampRef.current) {
+            humanResponseSubmittingRef.current = false;
+            setIsHumanResponseSubmitting(false);
+            interventionTimestampRef.current = createdAt;
+            setPendingIntervention(details.pending_intervention || null);
+          }
         }
       }
     } catch (e) {
@@ -275,16 +283,38 @@ export default function App() {
     } else if (event_type === 'STATUS_CHANGE' || event_type === 'TASK_PAUSED' || event_type === 'TASK_RESUMED') {
       const nextStatus = data.status || (event_type === 'TASK_PAUSED' ? 'PAUSED' : 'RUNNING');
       setTaskState((prev) => prev ? { ...prev, status: nextStatus } : null);
-      if (['COMPLETED', 'FAILED'].includes(nextStatus)
-        || (nextStatus === 'RUNNING' && humanResponseSubmittingRef.current)) {
+      if (['COMPLETED', 'FAILED', 'RUNNING'].includes(nextStatus) || event_type === 'TASK_RESUMED') {
         humanResponseSubmittingRef.current = false;
         setIsHumanResponseSubmitting(false);
         setPendingIntervention(null);
         liveInterventionRef.current = false;
         interventionTimestampRef.current = '';
+        setTasksData((prev) => ({
+          ...prev,
+          [currentId]: {
+            ...(prev[currentId] || {}),
+            pendingIntervention: null
+          }
+        }));
       }
       if (data.url) setCurrentUrl(data.url);
       loadHistory();
+    } else if (event_type === 'INTERVENTION_RESOLVED') {
+      if (data?.intervention_id) {
+        resolvedInterventionsRef.current.add(data.intervention_id);
+      }
+      humanResponseSubmittingRef.current = false;
+      setIsHumanResponseSubmitting(false);
+      setPendingIntervention(null);
+      liveInterventionRef.current = false;
+      interventionTimestampRef.current = '';
+      setTasksData((prev) => ({
+        ...prev,
+        [currentId]: {
+          ...(prev[currentId] || {}),
+          pendingIntervention: null
+        }
+      }));
     } else if (event_type === 'BROWSER_OBSERVED') {
       if (data.url) setCurrentUrl(data.url);
       if (data.frame_data) {
@@ -295,6 +325,8 @@ export default function App() {
         setScreenshotUrl((prev) => (prev && prev.startsWith('data:') ? prev : `/api/tasks/${currentId}/screenshot/${filename}?t=${Date.now()}`));
       }
     } else if (event_type === 'ACTION_PLANNED') {
+      setPendingIntervention(null);
+      liveInterventionRef.current = false;
       setEvents((prev) => [
         ...prev,
         {
@@ -308,6 +340,8 @@ export default function App() {
         }
       ]);
     } else if (event_type === 'SUBTASK_COMPLETED') {
+      setPendingIntervention(null);
+      liveInterventionRef.current = false;
       setEvents((prev) => [
         ...prev,
         {
@@ -485,6 +519,7 @@ export default function App() {
       setPendingIntervention(null);
       liveInterventionRef.current = false;
       interventionTimestampRef.current = '';
+      resolvedInterventionsRef.current.clear();
       humanResponseSubmittingRef.current = false;
       setIsHumanResponseSubmitting(false);
       isAtBottomRef.current = true;
@@ -575,13 +610,26 @@ export default function App() {
     if (humanResponseSubmittingRef.current) return;
     humanResponseSubmittingRef.current = true;
     setIsHumanResponseSubmitting(true);
+    if (pendingIntervention?.id) {
+      resolvedInterventionsRef.current.add(pendingIntervention.id);
+    }
     // Immediately dismiss intervention box on reply/action
     setPendingIntervention(null);
     liveInterventionRef.current = false;
+    interventionTimestampRef.current = new Date().toISOString();
+    setTasksData((prev) => ({
+      ...prev,
+      [activeTaskId]: {
+        ...(prev[activeTaskId] || {}),
+        pendingIntervention: null
+      }
+    }));
     try {
       await submitHumanResponse(activeTaskId, approved, responseData);
       humanResponseSubmittingRef.current = false;
       setIsHumanResponseSubmitting(false);
+      setPendingIntervention(null);
+      liveInterventionRef.current = false;
     } catch (e) {
       humanResponseSubmittingRef.current = false;
       setIsHumanResponseSubmitting(false);
@@ -969,7 +1017,7 @@ export default function App() {
                   />
 
                   {/* Human Intervention Box */}
-                  {displayIntervention && displayStatus !== 'PAUSED' && !['COMPLETED', 'FAILED', 'CANCELLED'].includes(displayStatus) && (
+                  {displayIntervention && displayStatus !== 'PAUSED' && displayStatus !== 'RUNNING' && !['COMPLETED', 'FAILED', 'CANCELLED'].includes(displayStatus) && (
                     <div className="chat-message intervention-message">
                       <div className="message-avatar warning-avatar">!</div>
                       <div className="intervention-content">
