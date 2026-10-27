@@ -171,20 +171,17 @@ async def task_websocket_endpoint(websocket: WebSocket, task_id: str):
                             if payload.get("url"):
                                 await session.navigate_to(payload["url"])
 
-                        # If CDP screencast is not active, push frame via screenshot
-                        if not getattr(session, "_cdp_session", None) and action in ("click", "mouseup", "double_click", "press", "type", "reload", "navigate"):
-                            async def _push_frame_async():
-                                try:
-                                    frame_data = await session.capture_base64_frame()
-                                    if frame_data:
-                                        await ws_manager.broadcast_to_task(task_id, {
-                                            "task_id": task_id,
-                                            "event_type": "BROWSER_FRAME",
-                                            "data": {"frame_data": frame_data, "url": session.current_url}
-                                        })
-                                except Exception:
-                                    pass
-                            asyncio.create_task(_push_frame_async())
+                        # Broadcast updated live frame to frontend immediately after click/key/navigation/scroll
+                        if action in ("click", "mouseup", "double_click", "press", "type", "reload", "navigate", "scroll"):
+                            await asyncio.sleep(0.04)
+                            frame_data = await session.capture_base64_frame()
+                            curr_url = session.current_url
+                            if frame_data:
+                                await ws_manager.broadcast_to_task(task_id, {
+                                    "task_id": task_id,
+                                    "event_type": "BROWSER_FRAME",
+                                    "data": {"frame_data": frame_data, "url": curr_url}
+                                })
             except Exception as e:
                 logger.debug(f"WS interaction dispatch error: {e}")
     except WebSocketDisconnect:

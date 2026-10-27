@@ -89,8 +89,8 @@ class BrowserSession:
                         pass
 
                 now = time.time()
-                # 45ms throttle (~22 fps) for ultra-low latency without WebSocket buffer congestion
-                if now - self._last_frame_time < 0.045:
+                # 50ms throttle (~20 fps) to balance fluidity with network throughput
+                if now - self._last_frame_time < 0.05:
                     return
 
                 self._last_frame_time = now
@@ -110,9 +110,9 @@ class BrowserSession:
                     if self._cdp_session:
                         await self._cdp_session.send("Page.startScreencast", {
                             "format": "jpeg",
-                            "quality": 60,
-                            "maxWidth": 1024,
-                            "maxHeight": 640,
+                            "quality": 80,
+                            "maxWidth": 1280,
+                            "maxHeight": 800,
                             "everyNthFrame": 1,
                         })
                 except Exception:
@@ -123,9 +123,9 @@ class BrowserSession:
         try:
             await self._cdp_session.send("Page.startScreencast", {
                 "format": "jpeg",
-                "quality": 60,
-                "maxWidth": 1024,
-                "maxHeight": 640,
+                "quality": 80,
+                "maxWidth": 1280,
+                "maxHeight": 800,
                 "everyNthFrame": 1,
             })
             logger.info("CDP Screencast started successfully for session %s.", self.session_id)
@@ -183,7 +183,8 @@ class BrowserSession:
         pixel_x = int(x_ratio * viewport["width"])
         pixel_y = int(y_ratio * viewport["height"])
         try:
-            await self.page.mouse.click(pixel_x, pixel_y)
+            await self.page.mouse.move(pixel_x, pixel_y)
+            await self.page.mouse.click(pixel_x, pixel_y, delay=80)
         except Exception as err:
             logger.warning("click_at_ratio failed at (%s, %s): %s", pixel_x, pixel_y, err)
 
@@ -219,7 +220,7 @@ class BrowserSession:
         Types string text into the currently focused element on the live page.
         """
         logger.info(f"User typed text into live canvas: '{text}'")
-        await self.page.keyboard.type(text)
+        await self.page.keyboard.type(text, delay=50)
 
     async def press_key(self, key: str):
         """
