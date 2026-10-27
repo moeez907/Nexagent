@@ -159,7 +159,7 @@ export default function HomePage({ onGetStarted, onSignIn, onLogout, onSelectMis
           </div>
         </div>
 
-        {/* Hero Interactive Browser Mockup Window */}
+        {/* Hero Interactive Browser Mockup / Demo Video Window */}
         <div id="interactive-demo" className="hero-browser-mockup">
           {/* Window Chrome Header */}
           <div className="mockup-window-header">
@@ -170,191 +170,35 @@ export default function HomePage({ onGetStarted, onSignIn, onLogout, onSelectMis
             </div>
 
             <div className="mockup-objective-bar">
-              <span className="objective-label">CURRENT OBJECTIVE</span>
-              <span className="objective-text">"Search Samsung 990 PRO on Amazon, filter rating &gt; 4.5, extract lowest unit price with spec breakdown"</span>
+              <span className="objective-label">LIVE AUTONOMOUS DEMO</span>
+              <span className="objective-text">"NexAgent Multi-Step Autonomous Navigation, Perception &amp; Execution"</span>
             </div>
 
-            <div style={{ width: 80 }} />
-          </div>
-
-          {/* Address & Control Toolbar */}
-          <div className="mockup-toolbar">
-            <div className="mockup-url-bar">
-              <Lock size={12} className="url-lock" />
-              <span className="url-text">https://www.amazon.com/s?k=samsung+990+pro+4tb</span>
-              <span className="url-meta">Headless Chromium 124.0.0 (Stealth Mode)</span>
-            </div>
             <div className="mockup-toolbar-actions">
-              <span className="toolbar-tag">Real-Time Vision Active</span>
+              <span className="toolbar-tag">Auto-Looping Demo</span>
             </div>
           </div>
 
-          {/* Split Body: Live Simulated Viewport on Left, Live Terminal/JSON on Right */}
-          <div className="mockup-split-body">
-            {/* Left: Simulated Web Viewport with Agent Action Highlight */}
-            <div className="mockup-viewport-pane">
-              <div className="mockup-page-content">
-                {/* Simulated Target Webpage elements */}
-                <div className="web-page-banner">
-                  <div className="web-search-sim">
-                    <Search size={13} color="#94a3b8" />
-                    <span>samsung 990 pro 4tb nvme</span>
-                  </div>
-                  <div className="web-badge-prime">Prime Deals</div>
-                </div>
-
-                <div className="web-product-card-active">
-                  <div className="web-product-thumb">
-                    <div className="thumb-box">SSD</div>
-                  </div>
-                  <div className="web-product-info">
-                    <div className="web-product-title">
-                      Samsung 990 PRO PCIe 4.0 NVMe SSD 4TB
-                    </div>
-                    <div className="web-product-seller">
-                      Official Flagship Store • 4.8 Stars (1,248 Reviews) • 7000+ sold last month
-                    </div>
-                    <div className="web-product-tags">
-                      <span className="web-tag free-ship">FREE SHIPPING</span>
-                      <span className="web-tag stock">IN STOCK • 4TB NVMe</span>
-                    </div>
-                  </div>
-                  <div className="web-product-pricing">
-                    <div className="web-price">$319.99</div>
-                    <div className="web-list-price">List: $359.99</div>
-                  </div>
-
-                  {/* Visual Agent Target Indicator */}
-                  <div className="agent-cursor-target">
-                    <div className="target-bounding-box" />
-                    <div className="target-tooltip">
-                      <span className="target-pulse" />
-                      Agent Action: [Click & Inspect DOM: #specs-table]
-                    </div>
-                  </div>
-                </div>
-
-                {/* Second result row */}
-                <div className="web-product-card-secondary">
-                  <div className="web-product-thumb secondary-thumb">
-                    <div className="thumb-box">SSD</div>
-                  </div>
-                  <div className="web-product-info">
-                    <div className="web-product-title">
-                      Crucial T700 4TB Gen5 NVMe M.2
-                    </div>
-                    <div className="web-product-seller">
-                      Crucial Store • 4.7 Stars (873 Reviews)
-                    </div>
-                  </div>
-                  <div className="web-product-pricing">
-                    <div className="web-price">$379.99</div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Bottom Agent Decision Overlay Banner */}
-              <div className="agent-action-overlay-bar">
-                <div className="overlay-indicator">
-                  <span className="overlay-dot" />
-                  <strong>Autonomous Decision:</strong> Dynamic element mutation resolved. Auto-injected resilient selector in 48ms.
-                </div>
-                <div className="overlay-step">Step 4/6</div>
-              </div>
-            </div>
-
-            {/* Right: Live Agent Terminal & Structured Data Stream */}
-            <div className="mockup-terminal-pane">
-              <div className="terminal-header">
-                <div className="terminal-title">
-                  <Terminal size={14} color="#38bdf8" />
-                  <span>LIVE DATA STREAM</span>
-                </div>
-                <div className="terminal-tabs">
-                  <button
-                    className={`terminal-tab ${activeTab === 'json' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('json')}
-                  >
-                    JSON
-                  </button>
-                  <button
-                    className={`terminal-tab ${activeTab === 'dom' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('dom')}
-                  >
-                    DOM TREE
-                  </button>
-                  <button
-                    className={`terminal-tab ${activeTab === 'actions' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('actions')}
-                  >
-                    LOGS
-                  </button>
-                </div>
-              </div>
-
-              <div className="terminal-code-body">
-                {activeTab === 'json' && (
-                  <pre className="code-block">
-                    <code>
-                      <span className="c-brace">&#123;</span>{'\n'}
-                      {'  '}<span className="c-key">"status"</span>: <span className="c-str">"COMPLETED"</span>,{'\n'}
-                      {'  '}<span className="c-key">"query"</span>: <span className="c-str">"Samsung 990 PRO 4TB NVMe SSD"</span>,{'\n'}
-                      {'  '}<span className="c-key">"vendor"</span>: <span className="c-str">"Verified Retailer"</span>,{'\n'}
-                      {'  '}<span className="c-key">"live_price"</span>: <span className="c-val-price">"$319.99"</span>,{'\n'}
-                      {'  '}<span className="c-key">"in_stock"</span>: <span className="c-bool">true</span>,{'\n'}
-                      {'  '}<span className="c-key">"rating"</span>: <span className="c-num">4.8</span>,{'\n'}
-                      {'  '}<span className="c-key">"reviews_count"</span>: <span className="c-num">1248</span>,{'\n'}
-                      {'  '}<span className="c-key">"specs"</span>: <span className="c-brace">&#123;</span>{'\n'}
-                      {'    '}<span className="c-key">"form_factor"</span>: <span className="c-str">"M.2 2280"</span>,{'\n'}
-                      {'    '}<span className="c-key">"interface"</span>: <span className="c-str">"PCIe Gen 4.0 x4"</span>,{'\n'}
-                      {'    '}<span className="c-key">"read_speed"</span>: <span className="c-str">"7,450 MB/s"</span>,{'\n'}
-                      {'    '}<span className="c-key">"write_speed"</span>: <span className="c-str">"6,900 MB/s"</span>{'\n'}
-                      {'  '}<span className="c-brace">&#125;</span>,{'\n'}
-                      {'  '}<span className="c-key">"actions_taken"</span>: <span className="c-num">6</span>,{'\n'}
-                      {'  '}<span className="c-key">"dom_nodes_evaluated"</span>: <span className="c-num">1420</span>,{'\n'}
-                      {'  '}<span className="c-key">"execution_time_ms"</span>: <span className="c-num">418</span>{'\n'}
-                      <span className="c-brace">&#125;</span>
-                    </code>
-                  </pre>
-                )}
-
-                {activeTab === 'dom' && (
-                  <pre className="code-block dom-code">
-                    <code>
-                      <span className="c-comment">&lt;!-- Cleaned Semantic Accessibility Tree --&gt;</span>{'\n'}
-                      <span className="c-tag">&lt;div</span> <span className="c-attr">role</span>=<span className="c-str">"main"</span> <span className="c-attr">id</span>=<span className="c-str">"search-results"</span><span className="c-tag">&gt;</span>{'\n'}
-                      {'  '}<span className="c-tag">&lt;article</span> <span className="c-attr">data-asin</span>=<span className="c-str">"B0CHGT1KFQ"</span><span className="c-tag">&gt;</span>{'\n'}
-                      {'    '}<span className="c-tag">&lt;h2&gt;</span>Samsung 990 PRO 4TB<span className="c-tag">&lt;/h2&gt;</span>{'\n'}
-                      {'    '}<span className="c-tag">&lt;span</span> <span className="c-attr">class</span>=<span className="c-str">"a-price-whole"</span><span className="c-tag">&gt;</span>319<span className="c-tag">&lt;/span&gt;</span>{'\n'}
-                      {'    '}<span className="c-tag">&lt;button</span> <span className="c-attr">id</span>=<span className="c-str">"specs-btn"</span> <span className="c-attr">aria-expanded</span>=<span className="c-str">"true"</span><span className="c-tag">&gt;</span>{'\n'}
-                      {'      '}Specifications Table &gt;&gt;{'\n'}
-                      {'    '}<span className="c-tag">&lt;/button&gt;</span>{'\n'}
-                      {'  '}<span className="c-tag">&lt;/article&gt;</span>{'\n'}
-                      <span className="c-tag">&lt;/div&gt;</span>
-                    </code>
-                  </pre>
-                )}
-
-                {activeTab === 'actions' && (
-                  <div className="terminal-logs">
-                    <div className="log-line"><span className="log-time">00:00.024</span> <span className="log-info">[INIT]</span> Spawning isolated Chromium context with stealth fingerprint</div>
-                    <div className="log-line"><span className="log-time">00:00.112</span> <span className="log-nav">[NAVIGATE]</span> Target URL loaded (HTTP 200 OK)</div>
-                    <div className="log-line"><span className="log-time">00:00.204</span> <span className="log-dom">[DOM_PARSE]</span> Pruned 3,840 raw nodes to 42 interactive semantic nodes</div>
-                    <div className="log-line"><span className="log-time">00:00.288</span> <span className="log-action">[ACTION]</span> Dispatched simulated natural click to target #specs-table</div>
-                    <div className="log-line"><span className="log-time">00:00.370</span> <span className="log-extract">[EXTRACT]</span> Schema parsed with 100% confidence rating</div>
-                    <div className="log-line success"><span className="log-time">00:00.418</span> <span className="log-ok">[DONE]</span> Mission accomplished successfully</div>
-                  </div>
-                )}
-              </div>
-
-              <div className="terminal-footer">
-                <span className="terminal-footer-label">Target: //table[@id='specs'] -&gt; Extracted</span>
-                <button className="copy-btn" onClick={copyToClipboard}>
-                  {copied ? <Check size={12} color="#10b981" /> : <Copy size={12} />}
-                  <span>{copied ? 'Copied' : 'Copy Payload'}</span>
-                </button>
-              </div>
-            </div>
+          {/* Video Player Container */}
+          <div className="hero-demo-video-wrapper">
+            <video
+              className="hero-demo-video"
+              src="/demo-video.mp4"
+              poster="/demo-poster.jpg"
+              autoPlay
+              loop
+              muted
+              playsInline
+              preload="metadata"
+              title="Click to play / pause video"
+              onClick={(e) => {
+                if (e.currentTarget.paused) {
+                  e.currentTarget.play();
+                } else {
+                  e.currentTarget.pause();
+                }
+              }}
+            />
           </div>
         </div>
       </section>

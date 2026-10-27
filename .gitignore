@@ -35,3 +35,6 @@ backend/sessions/
 Thumbs.db
 .vscode/
 .idea/
+
+# Large Raw Media Files
+demo video.mp4

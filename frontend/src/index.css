@@ -2152,6 +2152,29 @@ body {
   overflow: hidden;
 }
 
+.hero-demo-video-wrapper {
+  position: relative;
+  width: 100%;
+  background: #000000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  line-height: 0;
+}
+
+.hero-demo-video {
+  width: 100%;
+  height: auto;
+  max-height: 720px;
+  display: block;
+  object-fit: contain;
+  cursor: pointer;
+  background: #000000;
+  border-bottom-left-radius: 13px;
+  border-bottom-right-radius: 13px;
+}
+
 .mockup-window-header {
   height: 44px;
   background: #f8fafc;
