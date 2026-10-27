@@ -171,8 +171,8 @@ async def task_websocket_endpoint(websocket: WebSocket, task_id: str):
                             if payload.get("url"):
                                 await session.navigate_to(payload["url"])
 
-                        # Non-blocking async frame refresh after user action
-                        if action in ("click", "mouseup", "double_click", "press", "type", "reload", "navigate"):
+                        # If CDP screencast is not active, push frame via screenshot
+                        if not getattr(session, "_cdp_session", None) and action in ("click", "mouseup", "double_click", "press", "type", "reload", "navigate"):
                             async def _push_frame_async():
                                 try:
                                     frame_data = await session.capture_base64_frame()

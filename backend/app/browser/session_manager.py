@@ -89,8 +89,8 @@ class BrowserSession:
                         pass
 
                 now = time.time()
-                # 30ms throttle (~33 fps) for ultra-fluid, instant frame delivery
-                if now - self._last_frame_time < 0.03:
+                # 45ms throttle (~22 fps) for ultra-low latency without WebSocket buffer congestion
+                if now - self._last_frame_time < 0.045:
                     return
 
                 self._last_frame_time = now
@@ -110,9 +110,9 @@ class BrowserSession:
                     if self._cdp_session:
                         await self._cdp_session.send("Page.startScreencast", {
                             "format": "jpeg",
-                            "quality": 80,
-                            "maxWidth": 1280,
-                            "maxHeight": 800,
+                            "quality": 60,
+                            "maxWidth": 1024,
+                            "maxHeight": 640,
                             "everyNthFrame": 1,
                         })
                 except Exception:
@@ -123,9 +123,9 @@ class BrowserSession:
         try:
             await self._cdp_session.send("Page.startScreencast", {
                 "format": "jpeg",
-                "quality": 80,
-                "maxWidth": 1280,
-                "maxHeight": 800,
+                "quality": 60,
+                "maxWidth": 1024,
+                "maxHeight": 640,
                 "everyNthFrame": 1,
             })
             logger.info("CDP Screencast started successfully for session %s.", self.session_id)
